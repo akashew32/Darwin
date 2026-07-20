@@ -50,7 +50,9 @@ class StatefulFeaturePipeline:
         values["depth_imbalance_1"] = depth_imbalance(snapshot, 1)
         values["depth_imbalance_5"] = depth_imbalance(snapshot, 5)
         values["depth_imbalance_10"] = depth_imbalance(snapshot, 10)
-        return FeatureVector(market_id=snapshot.market_id, asof_ts=snapshot.received_ts, values=values)
+        return FeatureVector(
+            market_id=snapshot.market_id, asof_ts=snapshot.received_ts, values=values
+        )
 
 
 def _realized_volatility(values: list[Decimal]) -> float:
@@ -59,4 +61,4 @@ def _realized_volatility(values: list[Decimal]) -> float:
     returns = [float(values[i] - values[i - 1]) for i in range(1, len(values))]
     mean = sum(returns) / len(returns)
     variance = sum((value - mean) ** 2 for value in returns) / len(returns)
-    return variance**0.5
+    return float(variance**0.5)

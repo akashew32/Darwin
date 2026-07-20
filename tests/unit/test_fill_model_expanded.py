@@ -12,7 +12,10 @@ def snapshot() -> OrderBookSnapshot:
         exchange=Exchange.KALSHI,
         market_id="M",
         bids=(PriceLevel(price=Decimal("0.49"), quantity=10),),
-        asks=(PriceLevel(price=Decimal("0.51"), quantity=4), PriceLevel(price=Decimal("0.52"), quantity=4)),
+        asks=(
+            PriceLevel(price=Decimal("0.51"), quantity=4),
+            PriceLevel(price=Decimal("0.52"), quantity=4),
+        ),
         received_ts=datetime.now(UTC),
     )
 
@@ -38,7 +41,9 @@ def test_multi_level_partial_fill() -> None:
 
 
 def test_limit_prevents_fill() -> None:
-    result = SimulatedBroker().submit_against_snapshot(request(5, "0.50"), snapshot(), datetime.now(UTC))
+    result = SimulatedBroker().submit_against_snapshot(
+        request(5, "0.50"), snapshot(), datetime.now(UTC)
+    )
     assert result.order.filled_quantity == 0
     assert result.fills == ()
 

@@ -38,7 +38,10 @@ def fill(fill_id: str, quantity: int) -> Fill:
     )
 
 
-@pytest.mark.parametrize("quantity,status", [(1, OrderStatus.PARTIALLY_FILLED), (5, OrderStatus.FILLED), (9, OrderStatus.FILLED)])
+@pytest.mark.parametrize(
+    "quantity,status",
+    [(1, OrderStatus.PARTIALLY_FILLED), (5, OrderStatus.FILLED), (9, OrderStatus.FILLED)],
+)
 def test_apply_fill_caps_quantity(quantity: int, status: OrderStatus) -> None:
     updated = apply_fill(Order.created(request()), fill("f", quantity))
     assert updated.filled_quantity <= 5
@@ -48,7 +51,11 @@ def test_apply_fill_caps_quantity(quantity: int, status: OrderStatus) -> None:
 @pytest.mark.parametrize("transition", ["cancel", "reject"])
 def test_terminal_transitions(transition: str) -> None:
     order = Order.created(request())
-    updated = cancel(order, datetime.now(UTC), "operator") if transition == "cancel" else reject(order, datetime.now(UTC), "bad")
+    updated = (
+        cancel(order, datetime.now(UTC), "operator")
+        if transition == "cancel"
+        else reject(order, datetime.now(UTC), "bad")
+    )
     assert updated.status in {OrderStatus.CANCELED, OrderStatus.REJECTED}
     assert updated.remaining_quantity == 0
 

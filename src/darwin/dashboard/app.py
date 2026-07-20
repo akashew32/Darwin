@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -17,7 +18,9 @@ def main() -> None:
     summary = _load_json(report_dir / "summary.json")
     cols = st.columns(4)
     cols[0].metric("Trading mode", config.execution.mode.value)
-    cols[1].metric("Kill switch", "active" if KillSwitch(config.risk.kill_switch_path).active() else "clear")
+    cols[1].metric(
+        "Kill switch", "active" if KillSwitch(config.risk.kill_switch_path).active() else "clear"
+    )
     cols[2].metric("Cash", f"${summary.get('final_cash', 0):,.2f}")
     cols[3].metric("Net P&L", f"${summary.get('net_pnl', 0):,.4f}")
     st.info("Live-order actions are intentionally unavailable.")
@@ -39,7 +42,10 @@ def main() -> None:
 def _load_json(path: Path) -> dict[str, float]:
     if not path.exists():
         return {}
-    return json.loads(path.read_text())
+    raw: Any = json.loads(path.read_text())
+    if not isinstance(raw, dict):
+        return {}
+    return {str(key): float(value) for key, value in raw.items() if isinstance(value, int | float)}
 
 
 def _table(path: Path) -> None:

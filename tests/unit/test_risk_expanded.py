@@ -52,16 +52,18 @@ def test_risk_rejection_reasons(tmp_path, field: str, value: object, reason: str
         "displayed_depth": 100,
     }
     context_kwargs[field] = value
-    decision = RiskEngine(RiskConfig(min_available_cash=0), KillSwitch(tmp_path / "kill.json")).check_order(
-        order(), RiskContext(**context_kwargs), asof_ts=datetime.now(UTC)
-    )
+    decision = RiskEngine(
+        RiskConfig(min_available_cash=0), KillSwitch(tmp_path / "kill.json")
+    ).check_order(order(), RiskContext(**context_kwargs), asof_ts=datetime.now(UTC))
     assert reason in decision.reasons
 
 
 def test_open_order_limit_uses_open_orders_not_positions(tmp_path) -> None:
     request = order(client_id="open")
     open_order = __import__("darwin.domain.order", fromlist=["Order"]).Order.created(request)
-    engine = RiskEngine(RiskConfig(max_open_orders=1, min_available_cash=0), KillSwitch(tmp_path / "kill.json"))
+    engine = RiskEngine(
+        RiskConfig(max_open_orders=1, min_available_cash=0), KillSwitch(tmp_path / "kill.json")
+    )
     decision = engine.check_order(
         order(client_id="new"),
         RiskContext(

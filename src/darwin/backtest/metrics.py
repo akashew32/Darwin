@@ -58,8 +58,12 @@ def summarize(
         "return_on_initial_capital": float(net_pnl / initial_cash) if initial_cash else 0.0,
         "max_drawdown": float(max_drawdown(equity)),
         "win_rate": win_rate(trade_pnls),
-        "average_win": float(mean([p for p in trade_pnls if p > 0])) if any(p > 0 for p in trade_pnls) else 0.0,
-        "average_loss": float(mean([p for p in trade_pnls if p < 0])) if any(p < 0 for p in trade_pnls) else 0.0,
+        "average_win": float(mean([p for p in trade_pnls if p > 0]))
+        if any(p > 0 for p in trade_pnls)
+        else 0.0,
+        "average_loss": float(mean([p for p in trade_pnls if p < 0]))
+        if any(p < 0 for p in trade_pnls)
+        else 0.0,
         "profit_factor": float(profit_factor(trade_pnls)),
         "turnover": order_count,
         "order_count": order_count,

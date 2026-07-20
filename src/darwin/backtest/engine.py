@@ -17,15 +17,15 @@ from darwin.domain.enums import MarketStatus, OrderStatus
 from darwin.domain.market import Market
 from darwin.domain.portfolio import PortfolioState
 from darwin.exchanges.kalshi.orderbook import LocalOrderBook
-from darwin.features.pipeline import FeaturePipeline
+from darwin.execution.order_manager import OrderManager
+from darwin.execution.simulated_broker import SimulatedBroker
+from darwin.features.pipeline import StatefulFeaturePipeline
 from darwin.portfolio.accounting import apply_fill_to_portfolio, settle_market
 from darwin.portfolio.pnl import mark_portfolio
 from darwin.risk.engine import RiskContext, RiskEngine
 from darwin.risk.kill_switch import KillSwitch
 from darwin.strategies.base import StrategyContext
 from darwin.strategies.momentum import MomentumStrategy
-from darwin.execution.order_manager import OrderManager
-from darwin.execution.simulated_broker import SimulatedBroker
 
 
 class BacktestEngine:
@@ -40,7 +40,7 @@ class BacktestEngine:
     ) -> None:
         self.strategy = MomentumStrategy(strategy_config)
         self.risk = RiskEngine(risk_config, KillSwitch(risk_config.kill_switch_path))
-        self.features = FeaturePipeline()
+        self.features = StatefulFeaturePipeline()
         self.broker = SimulatedBroker()
         self.order_manager = OrderManager()
         self.portfolio = PortfolioState(cash=initial_cash)
@@ -134,7 +134,7 @@ class BacktestEngine:
             self._record_equity(event)
 
     def _decide(self, event: BacktestEvent, snapshot: Any) -> None:
-        vector = self.features.from_snapshot(snapshot)
+        vector = self.features.update(snapshot)
         if "momentum" in event.payload:
             vector = vector.model_copy(
                 update={"values": vector.values | {"momentum": float(event.payload["momentum"])}}
@@ -155,7 +155,9 @@ class BacktestEngine:
                 ),
                 position=position,
                 open_orders=tuple(self.order_manager.open_orders()),
-                unrealized_pnl=Decimal("0") if position is None else position.mark_unrealized(marks[event.market_id]),
+                unrealized_pnl=Decimal("0")
+                if position is None
+                else position.mark_unrealized(marks[event.market_id]),
                 now=event.received_ts,
             ),
         )

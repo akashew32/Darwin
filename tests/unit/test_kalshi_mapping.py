@@ -7,7 +7,12 @@ from darwin.exchanges.kalshi.mapper import map_delta, map_orderbook
 def test_orderbook_fp_mapping() -> None:
     snapshot = map_orderbook(
         "M",
-        {"orderbook_fp": {"yes_dollars": [["0.4000", "10.00"]], "no_dollars": [["0.5500", "7.00"]]}},
+        {
+            "orderbook_fp": {
+                "yes_dollars": [["0.4000", "10.00"]],
+                "no_dollars": [["0.5500", "7.00"]],
+            }
+        },
         datetime.now(UTC),
     )
     assert snapshot.best_bid == Decimal("0.4000")

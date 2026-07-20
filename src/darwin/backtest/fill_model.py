@@ -1,7 +1,6 @@
 from darwin.domain.order import OrderRequest
 from darwin.domain.orderbook import OrderBookSnapshot
-from darwin.execution.simulated_broker import FillSimulationResult
-from darwin.execution.simulated_broker import SimulatedBroker
+from darwin.execution.simulated_broker import FillSimulationResult, SimulatedBroker
 
 
 class ConservativeTouchFillModel:

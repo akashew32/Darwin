@@ -6,7 +6,9 @@ from darwin.backtest.metrics import max_drawdown, profit_factor, summarize
 from darwin.exchanges.kalshi.mapper import cents_to_probability, probability_to_cents
 
 
-@pytest.mark.parametrize("cents,probability", [(1, Decimal("0.01")), (25, Decimal("0.25")), (99, Decimal("0.99"))])
+@pytest.mark.parametrize(
+    "cents,probability", [(1, Decimal("0.01")), (25, Decimal("0.25")), (99, Decimal("0.99"))]
+)
 def test_cents_probability_conversion(cents: int, probability: Decimal) -> None:
     assert cents_to_probability(cents) == probability
     assert probability_to_cents(probability) == cents

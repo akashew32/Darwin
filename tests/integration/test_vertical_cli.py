@@ -5,7 +5,6 @@ from typer.testing import CliRunner
 
 from darwin.cli import app
 
-
 runner = CliRunner()
 
 
@@ -31,7 +30,13 @@ def test_walk_forward_cli_outputs_reports(tmp_path: Path) -> None:
     output = tmp_path / "wf"
     result = runner.invoke(
         app,
-        ["walk-forward", "--input", "tests/replay/multi_market_session.jsonl", "--output", str(output)],
+        [
+            "walk-forward",
+            "--input",
+            "tests/replay/multi_market_session.jsonl",
+            "--output",
+            str(output),
+        ],
     )
     assert result.exit_code == 0, result.output
     assert json.loads((output / "summary.json").read_text())["fold_count"] == 1

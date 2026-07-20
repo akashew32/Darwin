@@ -50,15 +50,18 @@ def run_walk_forward(
     if strategy != "momentum":
         raise ValueError("only the momentum strategy is implemented")
     events = read_events(str(input))
-    times = [event.received_ts for event in events]
-    folds = [
-        WalkForwardFold(
-            train_start=events[0].received_ts,
-            train_end=events[0].received_ts,
-            test_start=events[0].received_ts,
-            test_end=events[-1].received_ts,
-        )
-    ] if events else []
+    folds = (
+        [
+            WalkForwardFold(
+                train_start=events[0].received_ts,
+                train_end=events[0].received_ts,
+                test_start=events[0].received_ts,
+                test_end=events[-1].received_ts,
+            )
+        ]
+        if events
+        else []
+    )
 
     output.mkdir(parents=True, exist_ok=True)
     fold_rows: list[dict[str, Any]] = []
@@ -111,7 +114,7 @@ def _robustness_score(rows: list[dict[str, Any]]) -> float:
     positive = sum(1 for row in rows if row["net_pnl"] > 0) / len(rows)
     drawdown_penalty = sum(abs(row["max_drawdown"]) for row in rows) / max(1, len(rows))
     turnover_penalty = sum(row["order_count"] for row in rows) * 0.01
-    return max(0.0, positive - drawdown_penalty * 0.01 - turnover_penalty)
+    return float(max(0.0, positive - drawdown_penalty * 0.01 - turnover_penalty))
 
 
 def _html(summary: dict[str, Any], rows: list[dict[str, Any]]) -> str:

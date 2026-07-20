@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from darwin.domain.enums import BookSide, OrderIntent
+from darwin.domain.enums import OrderIntent
 from darwin.domain.fill import Fill
 from darwin.domain.order import Order, OrderRequest
 from darwin.domain.orderbook import OrderBookSnapshot, PriceLevel
@@ -46,11 +46,8 @@ class SimulatedBroker:
             if remaining <= 0:
                 break
             executable = (
-                request.intent == OrderIntent.BUY
-                and level.price <= request.limit_price
-                or request.intent == OrderIntent.SELL
-                and level.price >= request.limit_price
-            )
+                request.intent == OrderIntent.BUY and level.price <= request.limit_price
+            ) or (request.intent == OrderIntent.SELL and level.price >= request.limit_price)
             if not executable:
                 break
             max_at_level = max(1, int(Decimal(level.quantity) * max_depth_participation))

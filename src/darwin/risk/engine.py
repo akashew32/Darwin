@@ -46,7 +46,11 @@ class RiskEngine:
         portfolio = context.portfolio
         position = portfolio.positions.get(order.market_id)
         current_qty = 0 if position is None else abs(position.net_yes_exposure)
-        open_qty = sum(o.remaining_quantity for o in context.open_orders if o.request.market_id == order.market_id)
+        open_qty = sum(
+            o.remaining_quantity
+            for o in context.open_orders
+            if o.request.market_id == order.market_id
+        )
         notional = order.limit_price * Decimal(order.quantity)
 
         if self.kill_switch.active():

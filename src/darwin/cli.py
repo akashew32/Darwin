@@ -65,7 +65,11 @@ def markets_rank(input: Path = Path("tests/replay/multi_market_session.jsonl")) 
     counts: dict[str, int] = {}
     for event in events:
         counts[event.market_id] = counts.get(event.market_id, 0) + 1
-    typer.echo(json.dumps({"ranked_markets": sorted(counts.items(), key=lambda item: item[1], reverse=True)}))
+    typer.echo(
+        json.dumps(
+            {"ranked_markets": sorted(counts.items(), key=lambda item: item[1], reverse=True)}
+        )
+    )
 
 
 @app.command()
@@ -102,7 +106,9 @@ def features_build(input: Path = Path("tests/replay/multi_market_session.jsonl")
 @model_app.command("train")
 def model_train() -> None:
     """Train baseline models using time-based splits."""
-    typer.echo(json.dumps({"status": "no_training_dataset_configured", "credential_required": False}))
+    typer.echo(
+        json.dumps({"status": "no_training_dataset_configured", "credential_required": False})
+    )
 
 
 @app.command()
@@ -186,7 +192,9 @@ def live(
 @app.command()
 def reconcile() -> None:
     """Reconcile local state against exchange state."""
-    typer.echo(json.dumps({"status": "no_authenticated_exchange_configured", "action": "paper_state_ok"}))
+    typer.echo(
+        json.dumps({"status": "no_authenticated_exchange_configured", "action": "paper_state_ok"})
+    )
 
 
 @app.command("cancel-all")

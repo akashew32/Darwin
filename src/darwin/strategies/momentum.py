@@ -53,7 +53,9 @@ class MomentumStrategy(Strategy):
         yes_qty = 0 if position is None else position.yes_quantity
         no_qty = 0 if position is None else position.no_quantity
         net_yes = yes_qty - no_qty
-        has_open_equivalent = any(o.request.market_id == features.market_id for o in context.open_orders)
+        has_open_equivalent = any(
+            o.request.market_id == features.market_id for o in context.open_orders
+        )
 
         if spread > self.config.max_spread:
             reasons.append("spread_too_wide")
@@ -74,18 +76,19 @@ class MomentumStrategy(Strategy):
             action = "exit"
             target = 0
             reasons.append(
-                "stop_loss"
-                if stop_loss
-                else "take_profit"
-                if take_profit
-                else "momentum_reversal"
+                "stop_loss" if stop_loss else "take_profit" if take_profit else "momentum_reversal"
             )
             outcome = OutcomeSide.YES if net_yes > 0 else OutcomeSide.NO
             price = best_bid if outcome == OutcomeSide.YES else Decimal("1") - best_ask
             proposed.append(
                 self._order(features, outcome, OrderIntent.SELL, price, abs(net_yes), "exit")
             )
-        elif not reasons and not has_open_equivalent and net_yes == 0 and score >= self.config.entry_threshold:
+        elif (
+            not reasons
+            and not has_open_equivalent
+            and net_yes == 0
+            and score >= self.config.entry_threshold
+        ):
             action = "enter"
             target = self.config.order_quantity
             reasons.append("positive_momentum_with_book_confirmation")
@@ -99,7 +102,12 @@ class MomentumStrategy(Strategy):
                     "enter_yes",
                 )
             )
-        elif not reasons and not has_open_equivalent and net_yes == 0 and score <= -self.config.entry_threshold:
+        elif (
+            not reasons
+            and not has_open_equivalent
+            and net_yes == 0
+            and score <= -self.config.entry_threshold
+        ):
             action = "enter"
             target = -self.config.order_quantity
             reasons.append("negative_momentum_with_book_confirmation")

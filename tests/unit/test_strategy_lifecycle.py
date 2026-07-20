@@ -36,12 +36,19 @@ def test_strategy_entry_and_hold(momentum: float, action: str) -> None:
 
 @pytest.mark.parametrize(
     "unrealized,momentum,reason",
-    [(Decimal("-1"), 0.0, "stop_loss"), (Decimal("1"), 0.0, "take_profit"), (Decimal("0"), -2.0, "momentum_reversal")],
+    [
+        (Decimal("-1"), 0.0, "stop_loss"),
+        (Decimal("1"), 0.0, "take_profit"),
+        (Decimal("0"), -2.0, "momentum_reversal"),
+    ],
 )
 def test_strategy_exits(unrealized: Decimal, momentum: float, reason: str) -> None:
     position = Position(market_id="M", yes_quantity=3, average_yes_cost=Decimal("0.40"))
-    decision = MomentumStrategy(StrategyConfig(entry_threshold=0.5, exit_threshold=0.2, min_depth=1)).decide(
-        features(momentum), StrategyContext(market=None, position=position, open_orders=(), unrealized_pnl=unrealized)
+    decision = MomentumStrategy(
+        StrategyConfig(entry_threshold=0.5, exit_threshold=0.2, min_depth=1)
+    ).decide(
+        features(momentum),
+        StrategyContext(market=None, position=position, open_orders=(), unrealized_pnl=unrealized),
     )
     assert decision.action == "exit"
     assert reason in decision.reasons
@@ -49,9 +56,15 @@ def test_strategy_exits(unrealized: Decimal, momentum: float, reason: str) -> No
 
 def test_strategy_avoids_duplicate_open_order() -> None:
     strategy = MomentumStrategy(StrategyConfig(entry_threshold=0.5, min_depth=1))
-    first = strategy.decide(features(2.0), StrategyContext(market=None, position=None, open_orders=()))
+    first = strategy.decide(
+        features(2.0), StrategyContext(market=None, position=None, open_orders=())
+    )
     assert first.proposed_orders
-    open_order = __import__("darwin.domain.order", fromlist=["Order"]).Order.created(first.proposed_orders[0])
-    second = strategy.decide(features(2.0), StrategyContext(market=None, position=None, open_orders=(open_order,)))
+    open_order = __import__("darwin.domain.order", fromlist=["Order"]).Order.created(
+        first.proposed_orders[0]
+    )
+    second = strategy.decide(
+        features(2.0), StrategyContext(market=None, position=None, open_orders=(open_order,))
+    )
     assert second.action == "hold"
     assert "equivalent_order_open" in second.reasons
