@@ -74,3 +74,10 @@ PATH="$PWD/.venv/bin:$PATH" darwin paper --markets KXTEST-YES,KXTEST-REJECT --in
 ```
 
 Key results: 75 tests passed; lint/typecheck passed; sample backtest net P&L `0.2374`; walk-forward aggregate net P&L `0.2374`.
+
+## Live Paper Audit
+
+- Audited current replay paper, WebSocket, REST, local order book, fill, accounting, CLI, and report behavior.
+- Added `docs/live_paper_gap_analysis.md`.
+- Verified current Kalshi docs for public orderbook REST, authenticated WebSocket handshake, public channels, orderbook snapshot/delta behavior, and lifecycle statuses.
+- Next: explicit equity/closed-trade helpers, read-only market-data provider protocol, normalized event bus, mock exchange, and `darwin paper-live`.
