@@ -2,6 +2,7 @@ import asyncio
 import json
 import signal
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -37,6 +38,7 @@ class LivePaperSessionConfig:
     database_url: str
     seed: int
     max_events: int | None = None
+    dry_run: bool = False
 
 
 class LivePaperTrader:
@@ -78,6 +80,8 @@ class LivePaperTrader:
             "health": [],
             "equity_curve": [],
             "trades": [],
+            "metrics": [],
+            "books": [],
         }
         self._stop = asyncio.Event()
         self._db = _connect_sqlite(session_config.database_url)
@@ -86,11 +90,8 @@ class LivePaperTrader:
         self.session_config.output.mkdir(parents=True, exist_ok=True)
         self._init_db()
         self._install_signal_handlers()
-        markets = await self.provider.list_markets(status="open")
-        known = {market.market_id for market in markets}
-        missing = [market for market in self.session_config.markets if market not in known]
-        if missing:
-            raise ValueError(f"unknown markets: {missing}")
+        for market_id in self.session_config.markets:
+            await self.provider.get_market(market_id)
 
         for market_id in self.session_config.markets:
             snapshot = await self.provider.get_orderbook(market_id)
@@ -176,6 +177,24 @@ class LivePaperTrader:
         if event.event_type == "reconnect":
             for market_id in self.session_config.markets:
                 self.health.market(market_id).reconnect_count += 1
+            self.rows["health"].append(
+                {
+                    "ts": event.received_ts.isoformat(),
+                    "state": "degraded",
+                    "reason": "reconnect",
+                }
+            )
+            return
+        if event.event_type == "sequence_gap" and event.market_id:
+            self.health.mark_gap(event.market_id)
+            self.rows["health"].append(
+                {
+                    "ts": event.received_ts.isoformat(),
+                    "market_id": event.market_id,
+                    "state": "recovering",
+                    "reason": event.payload.get("reason", "sequence_gap"),
+                }
+            )
             return
         if event.event_type == "snapshot_recovery" and event.market_id and event.snapshot:
             self.books.setdefault(event.market_id, LocalOrderBook()).apply_snapshot(event.snapshot)
@@ -193,6 +212,7 @@ class LivePaperTrader:
             self.books.setdefault(event.market_id, LocalOrderBook()).apply_snapshot(event.snapshot)
             self.health.market(event.market_id).last_snapshot_ts = event.received_ts
             self.health.market(event.market_id).last_sequence = event.sequence
+            self._record_book(event, event.snapshot)
             await self._strategy_step(event, event.snapshot)
             return
         if event.event_type == "orderbook_delta" and event.market_id and event.delta:
@@ -213,10 +233,17 @@ class LivePaperTrader:
                 book.apply_snapshot(fresh)
                 self.health.mark_recovered(event.market_id)
                 return
+            self._record_book(event, snapshot)
             await self._strategy_step(event, snapshot)
+            return
+        if event.event_type in {"public_trade", "market_status", "market_metadata", "health"}:
+            return
 
     async def _strategy_step(self, event: NormalizedEvent, snapshot: Any) -> None:
         if event.market_id is None:
+            return
+        if self.session_config.dry_run:
+            self._record_equity(event)
             return
         health = self.health.market(event.market_id)
         if health.state in {HealthState.RECOVERING, HealthState.HALTED, HealthState.UNHEALTHY}:
@@ -273,6 +300,7 @@ class LivePaperTrader:
                 }
             )
             if risk.decision.value != "approved":
+                self.logger_info("risk_rejection", request.client_order_id, risk.reasons)
                 continue
             self.order_manager.create(request, event.correlation_id)
             result = self.broker.submit_against_snapshot(
@@ -316,6 +344,15 @@ class LivePaperTrader:
                     )
         self._record_equity(event)
 
+    def logger_info(self, event: str, client_order_id: str, reasons: Sequence[str]) -> None:
+        from darwin.logging import get_logger
+
+        get_logger("darwin.paper_live").info(
+            event,
+            client_order_id=client_order_id,
+            reasons=reasons,
+        )
+
     def _record_equity(self, event: NormalizedEvent) -> None:
         marks = {
             market_id: book.current_snapshot().midprice or Decimal("0.5")
@@ -328,6 +365,36 @@ class LivePaperTrader:
                 "ts": event.received_ts.isoformat(),
                 "equity": float(equity),
                 "cash": float(self.portfolio.cash),
+            }
+        )
+        self.rows["metrics"].append(
+            {
+                "ts": event.received_ts.isoformat(),
+                "queue_utilization": self.bus.utilization,
+                "portfolio_equity": float(equity),
+                "realized_pnl": float(self.portfolio.realized_pnl),
+                "unrealized_pnl": float(self.portfolio.unrealized_pnl),
+                "simulated_fills": len(self.rows["fills"]),
+                "risk_rejections": sum(
+                    1 for row in self.rows["risk_decisions"] if row["decision"] != "approved"
+                ),
+            }
+        )
+
+    def _record_book(self, event: NormalizedEvent, snapshot: Any) -> None:
+        spread = (
+            snapshot.best_ask - snapshot.best_bid
+            if snapshot.best_bid is not None and snapshot.best_ask is not None
+            else None
+        )
+        self.rows["books"].append(
+            {
+                "ts": event.received_ts.isoformat(),
+                "market_id": event.market_id,
+                "sequence": snapshot.sequence,
+                "best_bid": float(snapshot.best_bid) if snapshot.best_bid is not None else None,
+                "best_ask": float(snapshot.best_ask) if snapshot.best_ask is not None else None,
+                "spread": float(spread) if spread is not None else None,
             }
         )
 
@@ -345,12 +412,14 @@ class LivePaperTrader:
             "fees": float(self.portfolio.fees),
             "execution_endpoint_calls": 0,
             "health_halted_reason": self.health.halted_reason,
+            "dry_run": self.session_config.dry_run,
         }
         for name, rows in self.rows.items():
             _write_csv(self.session_config.output / f"{name}.csv", rows)
         (self.session_config.output / "summary.json").write_text(
             json.dumps(summary, indent=2, sort_keys=True)
         )
+        (self.session_config.output / "metrics.prom").write_text(_prometheus_metrics(summary))
         html = f"<html><body><pre>{json.dumps(summary, indent=2)}</pre></body></html>"
         (self.session_config.output / "report.html").write_text(html)
         return {"summary": summary, **self.rows}
@@ -430,3 +499,16 @@ def _write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
 
 def seed_suffix(seed: int) -> str:
     return f"{seed:04d}"
+
+
+def _prometheus_metrics(summary: dict[str, Any]) -> str:
+    gauges = {
+        "darwin_paper_orders_total": summary["orders"],
+        "darwin_paper_fills_total": summary["fills"],
+        "darwin_paper_risk_rejections_total": summary["risk_rejections"],
+        "darwin_paper_final_cash": summary["final_cash"],
+        "darwin_paper_realized_pnl": summary["realized_pnl"],
+        "darwin_paper_fees": summary["fees"],
+        "darwin_paper_execution_endpoint_calls_total": summary["execution_endpoint_calls"],
+    }
+    return "\n".join(f"{name} {value}" for name, value in gauges.items()) + "\n"

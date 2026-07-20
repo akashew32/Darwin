@@ -239,6 +239,7 @@ def paper_live(
     resume: str | None = typer.Option(None, "--resume"),
     exchange_environment: str = typer.Option("mock", "--exchange-environment"),
     max_events: int | None = typer.Option(None, "--max-events"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
 ) -> None:
     """Run live-data paper trading with simulated orders only."""
     if not markets:
@@ -251,16 +252,27 @@ def paper_live(
     typer.echo("PAPER-ONLY: real market data, simulated orders, no exchange order endpoints.")
     import asyncio
 
+    from darwin.exchanges.kalshi.market_data import KalshiMarketDataProvider
     from darwin.exchanges.mock import MockMarketDataProvider
     from darwin.execution.config import ExecutionSimulationConfig
     from darwin.services.live_paper_trader import LivePaperSessionConfig, LivePaperTrader
+    from darwin.services.market_data import MarketDataProvider
 
-    if exchange_environment != "mock":
-        raise typer.BadParameter("only --exchange-environment mock is enabled without credentials")
     app_config = load_config()
+    provider: MarketDataProvider
+    if exchange_environment == "mock":
+        provider = MockMarketDataProvider()
+    elif exchange_environment == "kalshi":
+        try:
+            provider = KalshiMarketDataProvider.from_config(app_config.exchange)
+        except ValueError as exc:
+            typer.echo(str(exc))
+            raise typer.Exit(1) from exc
+    else:
+        raise typer.BadParameter("--exchange-environment must be mock or kalshi")
     result = asyncio.run(
         LivePaperTrader(
-            provider=MockMarketDataProvider(),
+            provider=provider,
             strategy_config=load_strategy_config(config),
             risk_config=app_config.risk,
             execution_config=ExecutionSimulationConfig(random_seed=seed),
@@ -271,6 +283,7 @@ def paper_live(
                 database_url=database_url,
                 seed=seed,
                 max_events=max_events,
+                dry_run=dry_run,
             ),
         ).run()
     )

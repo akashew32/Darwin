@@ -38,6 +38,12 @@ class MockMarketDataProvider(MarketDataProvider):
             ),
         ]
 
+    async def get_market(self, market_id: str) -> Market:
+        for market in await self.list_markets():
+            if market.market_id == market_id:
+                return market
+        raise ValueError(f"unknown mock market {market_id}")
+
     async def get_orderbook(self, market_id: str) -> OrderBookSnapshot:
         return self._snapshot(market_id, 1, Decimal("0.48"), Decimal("0.50"), ask_qty=4)
 

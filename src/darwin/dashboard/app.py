@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +15,9 @@ def main() -> None:
     st.title("Darwin")
     st.caption("Read-only prediction-market research and paper-trading dashboard.")
     config = load_config()
-    report_dir = Path("reports/backtests/sample")
+    report_dir = Path(os.getenv("DARWIN_REPORT_DIR", "reports/paper/mock-smoke"))
+    if not (report_dir / "summary.json").exists():
+        report_dir = Path("reports/backtests/sample")
     summary = _load_json(report_dir / "summary.json")
     cols = st.columns(4)
     cols[0].metric("Trading mode", config.execution.mode.value)
@@ -25,17 +28,27 @@ def main() -> None:
     cols[3].metric("Net P&L", f"${summary.get('net_pnl', 0):,.4f}")
     st.info("Live-order actions are intentionally unavailable.")
 
-    tabs = st.tabs(["Overview", "Markets", "Positions", "Backtests", "Risk"])
+    tabs = st.tabs(["Overview", "Live", "Markets", "Positions", "Backtests", "Risk"])
     with tabs[0]:
+        st.caption(f"Report directory: {report_dir}")
         st.json(summary)
     with tabs[1]:
-        _table(report_dir / "signals.csv")
+        st.subheader("Connection And Health")
+        _table(report_dir / "health.csv")
+        st.subheader("Metrics")
+        _table(report_dir / "metrics.csv")
     with tabs[2]:
-        _table(report_dir / "positions.csv")
+        st.subheader("Current Books")
+        _table(report_dir / "books.csv")
+        st.subheader("Latest Signals")
+        _table(report_dir / "signals.csv")
     with tabs[3]:
+        _table(report_dir / "positions.csv")
+    with tabs[4]:
         _table(report_dir / "equity_curve.csv")
         _table(report_dir / "fills.csv")
-    with tabs[4]:
+    with tabs[5]:
+        _table(report_dir / "orders.csv")
         _table(report_dir / "risk_decisions.csv")
 
 

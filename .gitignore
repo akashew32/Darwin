@@ -20,4 +20,5 @@ data/private/
 models/artifacts/
 reports/private/
 reports/
+logs/
 .streamlit/secrets.toml

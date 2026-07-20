@@ -1,6 +1,8 @@
 import logging
 import re
 from collections.abc import MutableMapping
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Any, cast
 
 import structlog
@@ -34,8 +36,18 @@ def _redact_processor(
     return cast(MutableMapping[str, Any], redacted)
 
 
-def configure_logging(level: str = "INFO") -> None:
-    logging.basicConfig(level=level, format="%(message)s")
+def configure_logging(level: str = "INFO", log_file: str | Path = "logs/darwin.log") -> None:
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.setLevel(level)
+    stream = logging.StreamHandler()
+    stream.setFormatter(logging.Formatter("%(message)s"))
+    root.addHandler(stream)
+    path = Path(log_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rotating = RotatingFileHandler(path, maxBytes=5_000_000, backupCount=5)
+    rotating.setFormatter(logging.Formatter("%(message)s"))
+    root.addHandler(rotating)
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,

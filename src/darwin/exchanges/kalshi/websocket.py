@@ -30,7 +30,10 @@ class KalshiWebSocketClient:
         self.logger = get_logger("darwin.kalshi.websocket")
         self._stop = asyncio.Event()
         self.reconnect_count = 0
+        self.messages_received = 0
+        self.malformed_messages = 0
         self.last_message_monotonic: float | None = None
+        self.subscriptions: dict[int, dict[str, Any]] = {}
 
     def _headers(self) -> dict[str, str]:
         if self.auth is None:
@@ -57,20 +60,31 @@ class KalshiWebSocketClient:
                     ping_timeout=20,
                     max_queue=1024,
                 ) as ws:
-                    await ws.send(
-                        json.dumps(
-                            {
-                                "id": 1,
-                                "cmd": "subscribe",
-                                "params": {"channels": channels, "market_tickers": market_tickers},
-                            }
-                        )
+                    self.logger.info("kalshi_ws_connected", url=self.config.websocket_url)
+                    subscribe = {
+                        "id": 1,
+                        "cmd": "subscribe",
+                        "params": {"channels": channels, "market_tickers": market_tickers},
+                    }
+                    self.subscriptions[1] = subscribe
+                    await ws.send(json.dumps(subscribe))
+                    self.logger.info(
+                        "kalshi_ws_subscribed",
+                        channels=channels,
+                        market_count=len(market_tickers),
                     )
                     backoff = 1.0
                     async for raw in ws:
                         self.last_message_monotonic = time.monotonic()
-                        payload = json.loads(raw)
+                        self.messages_received += 1
+                        try:
+                            payload = json.loads(raw)
+                        except json.JSONDecodeError:
+                            self.malformed_messages += 1
+                            self.logger.warning("kalshi_ws_malformed_json")
+                            continue
                         if not isinstance(payload, dict):
+                            self.malformed_messages += 1
                             continue
                         yield payload
             except (OSError, websockets.WebSocketException, json.JSONDecodeError) as exc:
