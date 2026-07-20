@@ -40,3 +40,19 @@ git ls-files | head -200
 ```
 
 Result: generated summary, CSVs, and HTML report with nonzero fees, spread cost, net P&L, partial entry fill, exit, settlement, and one risk rejection.
+
+## Walk-Forward, Paper, Kalshi, Dashboard Slice
+
+- Implemented `darwin walk-forward` using the event-driven backtester for frozen test windows.
+- Implemented `darwin paper` against replay/mock live data, explicitly with no live order submission.
+- Corrected Kalshi create-order endpoint and payload shape from current official docs.
+- Extended Kalshi orderbook mapper to support fixed-point dollar orderbook schemas.
+- Replaced the static dashboard with report-backed read-only tables.
+- Added stateful incremental features and switched the backtester to use them.
+
+Smoke commands:
+
+```bash
+.venv/bin/darwin walk-forward --input tests/replay/multi_market_session.jsonl --output reports/walk_forward/sample
+.venv/bin/darwin paper --markets KXTEST-YES,KXTEST-REJECT --input tests/replay/multi_market_session.jsonl --output reports/paper/sample
+```

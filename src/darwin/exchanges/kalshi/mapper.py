@@ -64,13 +64,13 @@ def map_market(raw: dict[str, Any]) -> Market:
 
 
 def map_orderbook(market_id: str, raw: dict[str, Any], received_ts: datetime) -> OrderBookSnapshot:
-    book = raw.get("orderbook", raw)
-    yes = book.get("yes") or []
-    no = book.get("no") or []
+    book = raw.get("orderbook_fp") or raw.get("orderbook") or raw
+    yes = book.get("yes_dollars") or book.get("yes_dollars_fp") or book.get("yes") or []
+    no = book.get("no_dollars") or book.get("no_dollars_fp") or book.get("no") or []
     bids = tuple(
         sorted(
             (
-                PriceLevel(price=cents_to_probability(level[0]), quantity=int(level[1]))
+                PriceLevel(price=_level_price(level[0]), quantity=int(Decimal(str(level[1]))))
                 for level in yes
             ),
             key=lambda level: level.price,
@@ -81,7 +81,8 @@ def map_orderbook(market_id: str, raw: dict[str, Any], received_ts: datetime) ->
         sorted(
             (
                 PriceLevel(
-                    price=Decimal("1") - cents_to_probability(level[0]), quantity=int(level[1])
+                    price=Decimal("1") - _level_price(level[0]),
+                    quantity=int(Decimal(str(level[1]))),
                 )
                 for level in no
             ),
@@ -102,7 +103,7 @@ def map_delta(raw: dict[str, Any], received_ts: datetime) -> OrderBookDelta:
     msg = raw.get("msg", raw)
     market_id = str(msg.get("market_ticker") or msg.get("ticker"))
     side = OutcomeSide.YES if str(msg.get("side", "yes")).lower() == "yes" else OutcomeSide.NO
-    price = cents_to_probability(msg.get("price"))
+    price = _level_price(msg.get("price_dollars") or msg.get("price"))
     if side == OutcomeSide.NO:
         price = Decimal("1") - price
         book_side = BookSide.ASK
@@ -114,11 +115,18 @@ def map_delta(raw: dict[str, Any], received_ts: datetime) -> OrderBookDelta:
         side=book_side,
         outcome=OutcomeSide.YES,
         price=price,
-        delta_quantity=int(msg.get("delta", msg.get("quantity_delta", 0))),
+        delta_quantity=int(Decimal(str(msg.get("delta_fp", msg.get("delta", 0))))),
         absolute_quantity=msg.get("quantity"),
         sequence=raw.get("seq"),
         received_ts=received_ts,
     )
+
+
+def _level_price(value: Any) -> Decimal:
+    decimal = Decimal(str(value))
+    if decimal > 1:
+        return cents_to_probability(decimal)
+    return decimal
 
 
 def map_fill(raw: dict[str, Any], received_ts: datetime) -> Fill:

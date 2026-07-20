@@ -67,7 +67,7 @@ class KalshiRestClient:
     async def submit_order(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         return await self.request(
             "POST",
-            "/trade-api/v2/portfolio/events/orders",
+            "/trade-api/v2/portfolio/orders",
             json=payload,
             authenticated=True,
         )
@@ -81,3 +81,15 @@ class KalshiRestClient:
 
     async def get_fills(self) -> dict[str, Any]:
         return await self.request("GET", "/trade-api/v2/portfolio/fills", authenticated=True)
+
+    async def get_orders(self, status: str | None = None) -> dict[str, Any]:
+        params = {"status": status} if status else None
+        return await self.request(
+            "GET",
+            "/trade-api/v2/portfolio/orders",
+            params=params,
+            authenticated=True,
+        )
+
+    async def get_positions(self) -> dict[str, Any]:
+        return await self.request("GET", "/trade-api/v2/portfolio/positions", authenticated=True)

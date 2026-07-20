@@ -1,6 +1,5 @@
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
-from decimal import Decimal
 
 from darwin.config import ExchangeConfig
 from darwin.domain.enums import OrderStatus
@@ -15,7 +14,6 @@ from darwin.exchanges.kalshi.mapper import (
     map_fill,
     map_market,
     map_orderbook,
-    probability_to_cents,
 )
 from darwin.exchanges.kalshi.rest import KalshiRestClient
 from darwin.exchanges.kalshi.websocket import KalshiWebSocketClient
@@ -50,14 +48,16 @@ class KalshiClient(ExchangeClient):
         payload = {
             "ticker": request.market_id,
             "client_order_id": request.client_order_id,
-            "side": "bid" if request.intent.value == "buy" else "ask",
-            "type": "limit",
+            "side": request.outcome.value,
             "action": request.intent.value,
-            "yes_no": request.outcome.value,
-            "price": str(Decimal(probability_to_cents(request.limit_price)) / Decimal("100")),
-            "count": str(request.quantity),
+            "count": request.quantity,
             "post_only": request.post_only,
+            "time_in_force": "good_till_canceled",
         }
+        if request.outcome.value == "yes":
+            payload["yes_price_dollars"] = f"{request.limit_price:.4f}"
+        else:
+            payload["no_price_dollars"] = f"{request.limit_price:.4f}"
         response = await self.rest.submit_order(payload)
         raw = response.get("order", response)
         return Order(
@@ -70,7 +70,7 @@ class KalshiClient(ExchangeClient):
         )
 
     async def cancel_order(self, order_id: str) -> Order:
-        raise NotImplementedError("cancel_order requires the original request in the order manager")
+        raise ValueError("cancel_order requires order-manager context to return a Darwin Order")
 
     async def list_fills(self) -> list[Fill]:
         payload = await self.rest.get_fills()
