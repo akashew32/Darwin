@@ -7,22 +7,29 @@ Verified on 2026-07-20 in `/Users/aakashjha/Documents/New project/Darwin`.
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -e '.[dev]'
-.venv/bin/python -m pytest
-.venv/bin/python -m ruff check .
-.venv/bin/python -m ruff format --check .
-.venv/bin/python -m mypy
-.venv/bin/darwin doctor
-.venv/bin/darwin replay tests/replay/sample.jsonl
+PATH="$PWD/.venv/bin:$PATH" make lint
+PATH="$PWD/.venv/bin:$PATH" make typecheck
+PATH="$PWD/.venv/bin:$PATH" make test
+PATH="$PWD/.venv/bin:$PATH" darwin doctor
+PATH="$PWD/.venv/bin:$PATH" darwin db migrate
+PATH="$PWD/.venv/bin:$PATH" darwin replay tests/replay/multi_market_session.jsonl
+PATH="$PWD/.venv/bin:$PATH" darwin backtest --input tests/replay/multi_market_session.jsonl --output reports/backtests/sample
+PATH="$PWD/.venv/bin:$PATH" darwin walk-forward --input tests/replay/multi_market_session.jsonl --output reports/walk_forward/sample
+PATH="$PWD/.venv/bin:$PATH" darwin paper --markets KXTEST-YES,KXTEST-REJECT --input tests/replay/multi_market_session.jsonl --output reports/paper/sample
 ```
 
 ## Results
 
-- Tests: `10 passed`.
+- Tests: `75 passed`.
 - Lint: `All checks passed`.
-- Format: `99 files already formatted`.
-- Typecheck: `Success: no issues found in 83 source files`.
+- Format: `112 files already formatted`.
+- Typecheck: `Success: no issues found in 84 source files`.
 - Doctor: paper defaults, database config, kill switch, and live guard checks passed.
-- Replay: deterministic sample replay read `1` event.
+- Database migration: SQLite tables created.
+- Replay: deterministic multi-market replay read `6` events.
+- Backtest: `net_pnl=0.2374`, `fill_count=2`, `order_count=2`, `fees=0.0006`, `spread_cost=0.042`.
+- Walk-forward: `fold_count=1`, `aggregate_net_pnl=0.2374`, `robustness_score=0.97741`.
+- Mock paper: same deterministic paper summary as sample backtest; no live orders submitted.
 
 ## Notes
 

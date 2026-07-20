@@ -56,3 +56,21 @@ Smoke commands:
 .venv/bin/darwin walk-forward --input tests/replay/multi_market_session.jsonl --output reports/walk_forward/sample
 .venv/bin/darwin paper --markets KXTEST-YES,KXTEST-REJECT --input tests/replay/multi_market_session.jsonl --output reports/paper/sample
 ```
+
+## Final Verification
+
+Passed:
+
+```bash
+PATH="$PWD/.venv/bin:$PATH" make lint
+PATH="$PWD/.venv/bin:$PATH" make typecheck
+PATH="$PWD/.venv/bin:$PATH" make test
+PATH="$PWD/.venv/bin:$PATH" darwin doctor
+PATH="$PWD/.venv/bin:$PATH" darwin db migrate
+PATH="$PWD/.venv/bin:$PATH" darwin replay tests/replay/multi_market_session.jsonl
+PATH="$PWD/.venv/bin:$PATH" darwin backtest --input tests/replay/multi_market_session.jsonl --output reports/backtests/sample
+PATH="$PWD/.venv/bin:$PATH" darwin walk-forward --input tests/replay/multi_market_session.jsonl --output reports/walk_forward/sample
+PATH="$PWD/.venv/bin:$PATH" darwin paper --markets KXTEST-YES,KXTEST-REJECT --input tests/replay/multi_market_session.jsonl --output reports/paper/sample
+```
+
+Key results: 75 tests passed; lint/typecheck passed; sample backtest net P&L `0.2374`; walk-forward aggregate net P&L `0.2374`.

@@ -19,4 +19,5 @@ data/raw/
 data/private/
 models/artifacts/
 reports/private/
+reports/
 .streamlit/secrets.toml
