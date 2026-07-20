@@ -1,0 +1,15 @@
+app:
+  env: live
+exchange:
+  name: kalshi
+  environment: production
+execution:
+  mode: live
+  startup_delay_seconds: 30
+risk:
+  max_order_size: 1
+  max_position_per_market: 5
+  max_gross_contracts: 20
+  max_open_orders: 5
+  min_available_cash: 1000
+  min_expected_edge: 0.03

@@ -1,0 +1,16 @@
+app:
+  env: paper
+database:
+  url: sqlite:///./darwin.sqlite3
+exchange:
+  name: kalshi
+  environment: demo
+execution:
+  mode: paper
+risk:
+  max_order_size: 10
+  max_position_per_market: 50
+  max_gross_contracts: 200
+  max_open_orders: 20
+  min_available_cash: 100
+  min_expected_edge: 0.01

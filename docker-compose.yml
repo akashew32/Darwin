@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: darwin
+      POSTGRES_USER: darwin
+      POSTGRES_PASSWORD: darwin_dev_password
+    ports: ["5432:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darwin"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  api:
+    build: .
+    environment:
+      DARWIN_ENV: paper
+      TRADING_MODE: paper
+      DATABASE_URL: postgresql+psycopg://darwin:darwin_dev_password@postgres:5432/darwin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports: ["8000:8000"]
+    command: ["uvicorn", "darwin.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+
+volumes:
+  postgres_data:

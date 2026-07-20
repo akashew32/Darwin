@@ -1,0 +1,9 @@
+app:
+  env: development
+database:
+  url: sqlite:///./darwin.sqlite3
+exchange:
+  name: kalshi
+  environment: demo
+execution:
+  mode: paper
