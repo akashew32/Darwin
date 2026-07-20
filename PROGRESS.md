@@ -81,3 +81,34 @@ Key results: 75 tests passed; lint/typecheck passed; sample backtest net P&L `0.
 - Added `docs/live_paper_gap_analysis.md`.
 - Verified current Kalshi docs for public orderbook REST, authenticated WebSocket handshake, public channels, orderbook snapshot/delta behavior, and lifecycle statuses.
 - Next: explicit equity/closed-trade helpers, read-only market-data provider protocol, normalized event bus, mock exchange, and `darwin paper-live`.
+
+## Live Paper Implementation
+
+- Added explicit equity calculation and individual closed-trade P&L helpers.
+- Added a read-only `MarketDataProvider` protocol and a dedicated
+  `LivePaperTrader` service that depends on market data plus `PaperBroker`, not
+  live execution.
+- Added a bounded normalized event bus, health monitor, deterministic mock market
+  data provider, SQLite normalized-event persistence, CSV/HTML session reports,
+  and `darwin paper-live`.
+- Added mock `markets sync` and `collect` paths that produce real metadata and
+  streaming events without credentials.
+- Expanded accounting, event-pipeline, mock exchange, safety-boundary, CLI, and
+  live-paper integration tests. Current count: 134 tests.
+- Updated README and docs for live paper trading, accounting, execution
+  simulation, recovery, testing, risk, operations, and exchange integration.
+
+Mock smoke command:
+
+```bash
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin paper-live \
+  --markets KXTEST-A,KXTEST-B \
+  --duration 10 \
+  --exchange-environment mock \
+  --database-url sqlite:///./tmp-paper.sqlite3 \
+  --output reports/paper/mock-smoke \
+  --seed 42
+```
+
+Observed summary: two simulated orders, two fills, one risk rejection, nonzero
+fees, nonzero realized P&L, clean shutdown, and `execution_endpoint_calls: 0`.

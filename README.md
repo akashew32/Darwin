@@ -6,13 +6,24 @@ Darwin does not claim that any strategy is profitable. Reports must distinguish 
 
 ## Status
 
-Darwin is not production-ready. It now contains one complete offline vertical path for research and paper simulation:
+Darwin is not production-ready. It now contains one replay research path and one
+mock live-data paper path:
 
-- Fully implemented: deterministic replay, local order books, incremental features, position-aware momentum decisions, centralized risk checks, simulated order lifecycle, multi-level partial fills, portfolio accounting, fees, P&L, event-driven backtests, walk-forward sample evaluation, mock paper trading, report output, read-only dashboard views over reports, and 75 offline tests.
-- Partially implemented: Kalshi public/authenticated adapter, database model expansion, dashboard breadth, market ranking, and statistical model training.
-- Requires credentials: authenticated Kalshi order/fill/position/balance verification.
-- Intentionally disabled: live trading by default and dashboard live-order actions.
-- Future work: full WebSocket mock-server reconnection suite, credentialed Kalshi demo validation, richer persistence migrations, and production operations hardening.
+- Fully implemented: deterministic replay, local order books, incremental features,
+  position-aware momentum decisions, centralized risk checks, simulated order
+  lifecycle, multi-level partial fills, portfolio accounting, fees, P&L,
+  event-driven backtests, walk-forward sample evaluation, mock paper trading,
+  report output, read-only dashboard views over reports, mock live-data
+  paper trading, bounded normalized event queues, sequence-gap recovery, and
+  120+ offline tests.
+- Partially implemented: real Kalshi public streaming hookup, database model
+  breadth, dashboard breadth, market ranking, and statistical model training.
+- Requires credentials or network: live Kalshi market-data validation and
+  authenticated read-only account data.
+- Intentionally disabled: real-money trading and dashboard live-order actions.
+- Future work: credentialed Kalshi demo validation, richer persistence
+  migrations, durable restart of live paper sessions, and production operations
+  hardening.
 
 Live trading is intentionally disabled unless every safeguard in `docs/live_trading_checklist.md` is completed.
 
@@ -22,6 +33,9 @@ Live trading is intentionally disabled unless every safeguard in `docs/live_trad
 make setup
 darwin doctor
 ```
+
+If your shell cannot resolve the editable `darwin` script, prefix local commands
+with `PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH"` from the repository root.
 
 ## Database
 
@@ -38,8 +52,8 @@ docker compose up --build
 ## Data Collection
 
 ```bash
-darwin markets sync
-darwin collect
+darwin markets sync --environment mock
+darwin collect --markets KXTEST-A,KXTEST-B --duration 5 --environment mock
 ```
 
 Default commands are paper-safe and do not require credentials.
@@ -82,6 +96,25 @@ darwin paper \
 
 This command runs against replay/mock live data and never submits exchange orders.
 
+## Live-Data Paper Trading
+
+`paper-live` consumes streaming market data and simulates orders locally. The
+mock environment is fully offline and is used by the test suite:
+
+```bash
+darwin paper-live \
+  --markets KXTEST-A,KXTEST-B \
+  --duration 10 \
+  --exchange-environment mock \
+  --database-url sqlite:///./tmp-paper.sqlite3 \
+  --output reports/paper/mock-smoke \
+  --seed 42
+```
+
+Safety boundary: `paper-live` depends on a read-only market-data protocol and a
+local paper broker. The service has no dependency on the live execution broker
+and the mock smoke test asserts zero exchange-order endpoint calls.
+
 ## Dashboard
 
 ```bash
@@ -99,6 +132,8 @@ make test
 make lint
 make typecheck
 ```
+
+Current expected local result: 134 tests, Ruff clean, and strict mypy clean.
 
 ## Configuration
 
