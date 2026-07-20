@@ -6,7 +6,13 @@ Darwin does not claim that any strategy is profitable. Reports must distinguish 
 
 ## Status
 
-This repository contains the initial production-shaped implementation: typed domain models, Kalshi V2 adapter boundaries, replay/data-quality utilities, feature pipeline, baseline momentum strategy, risk engine, simulated/paper broker, portfolio accounting, event backtester, walk-forward splitter, model baselines, storage tables, CLI, API, dashboard, tests, Docker, and CI.
+Darwin is not production-ready. It now contains one complete offline vertical path for research and paper simulation:
+
+- Fully implemented: deterministic replay, local order books, incremental features, position-aware momentum decisions, centralized risk checks, simulated order lifecycle, multi-level partial fills, portfolio accounting, fees, P&L, event-driven backtests, walk-forward sample evaluation, mock paper trading, report output, read-only dashboard views over reports, and 75 offline tests.
+- Partially implemented: Kalshi public/authenticated adapter, database model expansion, dashboard breadth, market ranking, and statistical model training.
+- Requires credentials: authenticated Kalshi order/fill/position/balance verification.
+- Intentionally disabled: live trading by default and dashboard live-order actions.
+- Future work: full WebSocket mock-server reconnection suite, credentialed Kalshi demo validation, richer persistence migrations, and production operations hardening.
 
 Live trading is intentionally disabled unless every safeguard in `docs/live_trading_checklist.md` is completed.
 
@@ -42,25 +48,39 @@ Default commands are paper-safe and do not require credentials.
 
 ```bash
 darwin replay tests/replay/sample.jsonl
+darwin replay tests/replay/multi_market_session.jsonl
 ```
 
 ## Backtesting
 
 ```bash
-darwin backtest
+darwin backtest \
+  --input tests/replay/multi_market_session.jsonl \
+  --config config/strategies/momentum.yaml \
+  --initial-cash 10000 \
+  --output reports/backtests/sample
 ```
 
 ## Walk-Forward
 
 ```bash
-darwin walk-forward
+darwin walk-forward \
+  --input tests/replay/multi_market_session.jsonl \
+  --strategy momentum \
+  --config config/strategies/momentum.yaml \
+  --output reports/walk_forward/sample
 ```
 
 ## Paper Trading
 
 ```bash
-darwin paper
+darwin paper \
+  --markets KXTEST-YES,KXTEST-REJECT \
+  --input tests/replay/multi_market_session.jsonl \
+  --output reports/paper/sample
 ```
+
+This command runs against replay/mock live data and never submits exchange orders.
 
 ## Dashboard
 
@@ -69,6 +89,8 @@ darwin dashboard
 ```
 
 The dashboard is read-only for live-order actions.
+
+It reads generated report files, such as `reports/backtests/sample/summary.json`.
 
 ## Quality
 

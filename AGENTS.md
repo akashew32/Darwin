@@ -7,6 +7,8 @@
 - Never commit credentials, private keys, `.env`, account data, raw private data, or sensitive model artifacts.
 - Use `Decimal` or integer units for prices, cash, fees, and order accounting.
 - Run `make test`, `make lint`, and `make typecheck` before shipping substantial changes.
+- Use `tests/replay/multi_market_session.jsonl` for the canonical offline vertical-path check.
+- Do not reintroduce CLI commands that only print placeholder readiness text.
 - Tests must pass without network access or live credentials.
 - Orders must pass through the centralized risk engine before execution.
 - Keep dashboard live-order actions read-only unless a future reviewed release explicitly changes that.

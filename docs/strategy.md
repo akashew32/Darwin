@@ -2,7 +2,9 @@
 
 The initial strategy is a liquidity-filtered momentum baseline with order-book confirmation. It is intended to be inspectable, not proof of alpha.
 
-Signals combine momentum, book imbalance, trade-flow imbalance, breakout strength, spread penalty, volatility penalty, and staleness penalty. Entry requires sufficient depth, acceptable spread, fresh data, and expected edge above costs and buffers.
+Decisions combine momentum, book imbalance, trade-flow imbalance, breakout strength, spread penalty, volatility penalty, and staleness penalty. Entry requires sufficient depth, acceptable spread, fresh data, and expected net edge above costs and buffers.
+
+The strategy is position-aware. It exits on stop-loss, take-profit, momentum reversal, and avoids duplicate entry when an equivalent order is open. It emits structured decisions with proposed orders, fair value, executable price, fees, slippage, gross edge, and net edge.
 
 Known risks include overfitting, stale data, spread widening, incomplete queue information, market halts, resolution ambiguity, and logically related market exposure.
 
