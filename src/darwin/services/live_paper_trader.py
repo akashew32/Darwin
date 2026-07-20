@@ -11,12 +11,12 @@ from typing import Any
 from darwin.config import RiskConfig, StrategyConfig
 from darwin.data.event_bus import BoundedEventBus, QueueOverflowError
 from darwin.data.events import NormalizedEvent
-from darwin.domain.enums import MarketStatus
+from darwin.domain.enums import Exchange, MarketStatus
 from darwin.domain.portfolio import PortfolioState
+from darwin.exchanges.kalshi.orderbook import LocalOrderBook
 from darwin.execution.config import ExecutionSimulationConfig
 from darwin.execution.order_manager import OrderManager
 from darwin.execution.paper_broker import PaperBroker
-from darwin.exchanges.kalshi.orderbook import LocalOrderBook
 from darwin.features.pipeline import StatefulFeaturePipeline
 from darwin.portfolio.accounting import apply_fill_with_closed_trade
 from darwin.portfolio.equity import calculate_equity
@@ -67,7 +67,8 @@ class LivePaperTrader:
         self.books: dict[str, LocalOrderBook] = {}
         self.health = HealthMonitor()
         self.bus = BoundedEventBus(maxsize=1000)
-        self.session_id = f"paper-{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}-{seed_suffix(session_config.seed)}"
+        stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+        self.session_id = f"paper-{stamp}-{seed_suffix(session_config.seed)}"
         self.rows: dict[str, list[dict[str, Any]]] = {
             "events": [],
             "orders": [],
@@ -122,12 +123,18 @@ class LivePaperTrader:
                     break
         except QueueOverflowError:
             self.health.halt("queue_overflow")
-            self.rows["health"].append({"ts": datetime.now(UTC).isoformat(), "state": "halted", "reason": "queue_overflow"})
+            self.rows["health"].append(
+                {
+                    "ts": datetime.now(UTC).isoformat(),
+                    "state": "halted",
+                    "reason": "queue_overflow",
+                }
+            )
         finally:
             await self.bus.publish(
                 NormalizedEvent(
                     event_type="shutdown",
-                    exchange=next(iter(self.books.values())).snapshot.exchange if self.books else __import__("darwin.domain.enums", fromlist=["Exchange"]).Exchange.KALSHI,
+                    exchange=Exchange.KALSHI,
                     market_id=None,
                     exchange_ts=None,
                     received_ts=datetime.now(UTC),
@@ -158,7 +165,13 @@ class LivePaperTrader:
             health.last_message_ts = event.received_ts
             health.queue_utilization = self.bus.utilization
         if event.event_type == "heartbeat":
-            self.rows["health"].append({"ts": event.received_ts.isoformat(), "state": "healthy", "reason": "heartbeat"})
+            self.rows["health"].append(
+                {
+                    "ts": event.received_ts.isoformat(),
+                    "state": "healthy",
+                    "reason": "heartbeat",
+                }
+            )
             return
         if event.event_type == "reconnect":
             for market_id in self.session_config.markets:
@@ -167,7 +180,14 @@ class LivePaperTrader:
         if event.event_type == "snapshot_recovery" and event.market_id and event.snapshot:
             self.books.setdefault(event.market_id, LocalOrderBook()).apply_snapshot(event.snapshot)
             self.health.mark_recovered(event.market_id)
-            self.rows["health"].append({"ts": event.received_ts.isoformat(), "market_id": event.market_id, "state": "healthy", "reason": "snapshot_recovery"})
+            self.rows["health"].append(
+                {
+                    "ts": event.received_ts.isoformat(),
+                    "market_id": event.market_id,
+                    "state": "healthy",
+                    "reason": "snapshot_recovery",
+                }
+            )
             return
         if event.event_type == "orderbook_snapshot" and event.market_id and event.snapshot:
             self.books.setdefault(event.market_id, LocalOrderBook()).apply_snapshot(event.snapshot)
@@ -181,7 +201,14 @@ class LivePaperTrader:
                 snapshot = book.apply_delta(event.delta)
             except Exception:
                 self.health.mark_gap(event.market_id)
-                self.rows["health"].append({"ts": event.received_ts.isoformat(), "market_id": event.market_id, "state": "recovering", "reason": "sequence_gap"})
+                self.rows["health"].append(
+                    {
+                        "ts": event.received_ts.isoformat(),
+                        "market_id": event.market_id,
+                        "state": "recovering",
+                        "reason": "sequence_gap",
+                    }
+                )
                 fresh = await self.provider.get_orderbook(event.market_id)
                 book.apply_snapshot(fresh)
                 self.health.mark_recovered(event.market_id)
@@ -196,7 +223,8 @@ class LivePaperTrader:
             return
         vector = self.features.update(snapshot)
         if "momentum" in event.payload:
-            vector = vector.model_copy(update={"values": vector.values | {"momentum": float(event.payload["momentum"])}})
+            values = vector.values | {"momentum": float(event.payload["momentum"])}
+            vector = vector.model_copy(update={"values": values})
         mark = snapshot.midprice or Decimal("0.5")
         self.portfolio = mark_portfolio(self.portfolio, {event.market_id: mark})
         position = self.portfolio.positions.get(event.market_id)
@@ -210,7 +238,15 @@ class LivePaperTrader:
                 now=event.received_ts,
             ),
         )
-        self.rows["signals"].append({"ts": event.received_ts.isoformat(), "market_id": event.market_id, "action": decision.action, "score": decision.score, "net_edge": float(decision.net_edge)})
+        self.rows["signals"].append(
+            {
+                "ts": event.received_ts.isoformat(),
+                "market_id": event.market_id,
+                "action": decision.action,
+                "score": decision.score,
+                "net_edge": float(decision.net_edge),
+            }
+        )
         for request in decision.proposed_orders:
             risk = self.risk.check_order(
                 request,
@@ -228,7 +264,14 @@ class LivePaperTrader:
                 ),
                 asof_ts=event.received_ts,
             )
-            self.rows["risk_decisions"].append({"ts": event.received_ts.isoformat(), "client_order_id": request.client_order_id, "decision": risk.decision.value, "reasons": "|".join(risk.reasons)})
+            self.rows["risk_decisions"].append(
+                {
+                    "ts": event.received_ts.isoformat(),
+                    "client_order_id": request.client_order_id,
+                    "decision": risk.decision.value,
+                    "reasons": "|".join(risk.reasons),
+                }
+            )
             if risk.decision.value != "approved":
                 continue
             self.order_manager.create(request, event.correlation_id)
@@ -240,13 +283,37 @@ class LivePaperTrader:
                 slippage_bps=self.execution_config.slippage_bps,
             )
             self.order_manager.orders[request.client_order_id] = result.order
-            self.rows["orders"].append({"ts": event.received_ts.isoformat(), "client_order_id": request.client_order_id, "market_id": request.market_id, "status": result.order.status.value, "quantity": request.quantity, "filled_quantity": result.order.filled_quantity})
+            self.rows["orders"].append(
+                {
+                    "ts": event.received_ts.isoformat(),
+                    "client_order_id": request.client_order_id,
+                    "market_id": request.market_id,
+                    "status": result.order.status.value,
+                    "quantity": request.quantity,
+                    "filled_quantity": result.order.filled_quantity,
+                }
+            )
             for fill in result.fills:
                 self.order_manager.apply_fill(fill)
                 self.portfolio, closed = apply_fill_with_closed_trade(self.portfolio, fill)
-                self.rows["fills"].append({"ts": fill.received_ts.isoformat(), "fill_id": fill.fill_id, "client_order_id": fill.client_order_id, "market_id": fill.market_id, "quantity": fill.quantity, "price": float(fill.price), "fee": float(fill.fee)})
+                self.rows["fills"].append(
+                    {
+                        "ts": fill.received_ts.isoformat(),
+                        "fill_id": fill.fill_id,
+                        "client_order_id": fill.client_order_id,
+                        "market_id": fill.market_id,
+                        "quantity": fill.quantity,
+                        "price": float(fill.price),
+                        "fee": float(fill.fee),
+                    }
+                )
                 if closed:
-                    self.rows["trades"].append({"market_id": closed.market_id, "net_realized_pnl": float(closed.net_realized_pnl)})
+                    self.rows["trades"].append(
+                        {
+                            "market_id": closed.market_id,
+                            "net_realized_pnl": float(closed.net_realized_pnl),
+                        }
+                    )
         self._record_equity(event)
 
     def _record_equity(self, event: NormalizedEvent) -> None:
@@ -256,7 +323,13 @@ class LivePaperTrader:
             if book.snapshot
         }
         equity = calculate_equity(self.portfolio, marks, tuple(self.order_manager.open_orders()))
-        self.rows["equity_curve"].append({"ts": event.received_ts.isoformat(), "equity": float(equity), "cash": float(self.portfolio.cash)})
+        self.rows["equity_curve"].append(
+            {
+                "ts": event.received_ts.isoformat(),
+                "equity": float(equity),
+                "cash": float(self.portfolio.cash),
+            }
+        )
 
     def _finish(self, status: str) -> dict[str, Any]:
         summary = {
@@ -264,7 +337,9 @@ class LivePaperTrader:
             "status": status,
             "orders": len(self.rows["orders"]),
             "fills": len(self.rows["fills"]),
-            "risk_rejections": sum(1 for row in self.rows["risk_decisions"] if row["decision"] != "approved"),
+            "risk_rejections": sum(
+                1 for row in self.rows["risk_decisions"] if row["decision"] != "approved"
+            ),
             "final_cash": float(self.portfolio.cash),
             "realized_pnl": float(self.portfolio.realized_pnl),
             "fees": float(self.portfolio.fees),
@@ -273,20 +348,54 @@ class LivePaperTrader:
         }
         for name, rows in self.rows.items():
             _write_csv(self.session_config.output / f"{name}.csv", rows)
-        (self.session_config.output / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True))
-        (self.session_config.output / "report.html").write_text(f"<html><body><pre>{json.dumps(summary, indent=2)}</pre></body></html>")
+        (self.session_config.output / "summary.json").write_text(
+            json.dumps(summary, indent=2, sort_keys=True)
+        )
+        html = f"<html><body><pre>{json.dumps(summary, indent=2)}</pre></body></html>"
+        (self.session_config.output / "report.html").write_text(html)
         return {"summary": summary, **self.rows}
 
     def _persist_event(self, event: NormalizedEvent) -> None:
-        self.rows["events"].append({"ts": event.received_ts.isoformat(), "event_type": event.event_type, "market_id": event.market_id, "sequence": event.sequence})
+        self.rows["events"].append(
+            {
+                "ts": event.received_ts.isoformat(),
+                "event_type": event.event_type,
+                "market_id": event.market_id,
+                "sequence": event.sequence,
+            }
+        )
         self._db.execute(
-            "insert or ignore into normalized_events(session_id,event_id,event_type,market_id,received_ts,sequence,payload) values(?,?,?,?,?,?,?)",
-            (self.session_id, event.event_id, event.event_type, event.market_id, event.received_ts.isoformat(), event.sequence, json.dumps(event.payload)),
+            """
+            insert or ignore into normalized_events(
+                session_id,event_id,event_type,market_id,received_ts,sequence,payload
+            ) values(?,?,?,?,?,?,?)
+            """,
+            (
+                self.session_id,
+                event.event_id,
+                event.event_type,
+                event.market_id,
+                event.received_ts.isoformat(),
+                event.sequence,
+                json.dumps(event.payload),
+            ),
         )
         self._db.commit()
 
     def _init_db(self) -> None:
-        self._db.execute("create table if not exists normalized_events(session_id text,event_id text unique,event_type text,market_id text,received_ts text,sequence integer,payload text)")
+        self._db.execute(
+            """
+            create table if not exists normalized_events(
+                session_id text,
+                event_id text unique,
+                event_type text,
+                market_id text,
+                received_ts text,
+                sequence integer,
+                payload text
+            )
+            """
+        )
         self._db.commit()
 
     def _install_signal_handlers(self) -> None:

@@ -55,14 +55,17 @@ def markets_sync(
 ) -> None:
     """Sync markets from the configured exchange."""
     if environment != "mock":
-        raise typer.BadParameter("non-mock market sync requires network credentials and is not enabled here")
-    from darwin.exchanges.mock import MockMarketDataProvider
-
+        raise typer.BadParameter(
+            "non-mock market sync requires network credentials and is not enabled here"
+        )
     import asyncio
+
+    from darwin.exchanges.mock import MockMarketDataProvider
 
     markets = asyncio.run(MockMarketDataProvider().list_markets(status="open"))
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps({"markets": [market.model_dump(mode="json") for market in markets]}, indent=2))
+    payload = {"markets": [market.model_dump(mode="json") for market in markets]}
+    output.write_text(json.dumps(payload, indent=2))
     typer.echo(f"wrote {len(markets)} markets to {output}")
 
 
@@ -92,9 +95,9 @@ def collect(
     """Collect market data in paper-safe mode."""
     if environment != "mock":
         raise typer.BadParameter("live collection requires authenticated read-only WebSocket setup")
-    from darwin.exchanges.mock import MockMarketDataProvider
-
     import asyncio
+
+    from darwin.exchanges.mock import MockMarketDataProvider
 
     market_ids = [m for m in markets.split(",") if m]
 
@@ -241,14 +244,16 @@ def paper_live(
     if not markets:
         raise typer.BadParameter("--markets is required")
     if resume:
-        typer.echo(f"resume requested for session {resume}; current mock path starts a fresh session")
+        typer.echo(
+            f"resume requested for session {resume}; current mock path starts a fresh session"
+        )
     configure_logging(log_level)
     typer.echo("PAPER-ONLY: real market data, simulated orders, no exchange order endpoints.")
-    from darwin.execution.config import ExecutionSimulationConfig
-    from darwin.exchanges.mock import MockMarketDataProvider
-    from darwin.services.live_paper_trader import LivePaperSessionConfig, LivePaperTrader
-
     import asyncio
+
+    from darwin.exchanges.mock import MockMarketDataProvider
+    from darwin.execution.config import ExecutionSimulationConfig
+    from darwin.services.live_paper_trader import LivePaperSessionConfig, LivePaperTrader
 
     if exchange_environment != "mock":
         raise typer.BadParameter("only --exchange-environment mock is enabled without credentials")

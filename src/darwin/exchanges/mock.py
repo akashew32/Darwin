@@ -103,7 +103,13 @@ class MockMarketDataProvider(MarketDataProvider):
             market_ids[1],
             counter,
             2,
-            snapshot=self._snapshot(market_ids[1], 2, Decimal("0.40"), Decimal("0.80"), ask_qty=100),
+            snapshot=self._snapshot(
+                market_ids[1],
+                2,
+                Decimal("0.40"),
+                Decimal("0.80"),
+                ask_qty=100,
+            ),
             momentum=3.0,
         )
         counter += 1
@@ -130,7 +136,10 @@ class MockMarketDataProvider(MarketDataProvider):
             exchange=Exchange.KALSHI,
             market_id=market_id,
             bids=(PriceLevel(price=bid, quantity=100),),
-            asks=(PriceLevel(price=ask, quantity=ask_qty), PriceLevel(price=ask + Decimal("0.01"), quantity=4)),
+            asks=(
+                PriceLevel(price=ask, quantity=ask_qty),
+                PriceLevel(price=ask + Decimal("0.01"), quantity=4),
+            ),
             sequence=sequence,
             received_ts=self.start + timedelta(seconds=sequence),
         )

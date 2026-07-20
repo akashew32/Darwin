@@ -265,9 +265,7 @@ class BacktestEngine:
             for market_id, book in self.books.items()
             if book.snapshot is not None
         }
-        equity = calculate_equity(
-            self.portfolio, marks, tuple(self.order_manager.open_orders())
-        )
+        equity = calculate_equity(self.portfolio, marks, tuple(self.order_manager.open_orders()))
         self.rows["equity_curve"].append(
             {
                 "ts": event.received_ts.isoformat(),

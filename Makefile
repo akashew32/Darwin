@@ -1,28 +1,30 @@
 .PHONY: setup test lint format typecheck doctor dashboard docker-up
 
+export PYTHONPATH := src
+
 setup:
 	python -m pip install -e ".[dev,postgres]"
 	pre-commit install
 
 test:
-	pytest
+	.venv/bin/pytest
 
 lint:
-	ruff check .
-	ruff format --check .
+	.venv/bin/ruff check .
+	.venv/bin/ruff format --check .
 
 format:
-	ruff check --fix .
-	ruff format .
+	.venv/bin/ruff check --fix .
+	.venv/bin/ruff format .
 
 typecheck:
-	mypy
+	.venv/bin/mypy
 
 doctor:
-	darwin doctor
+	.venv/bin/darwin doctor
 
 dashboard:
-	darwin dashboard
+	.venv/bin/darwin dashboard
 
 docker-up:
 	docker compose up --build
