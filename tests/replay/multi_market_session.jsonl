@@ -1,0 +1,6 @@
+{"event_type":"orderbook_snapshot","market_id":"KXTEST-YES","event_id":"EVT1","title":"Synthetic YES market","exchange_ts":"2026-01-01T00:00:00Z","received_ts":"2026-01-01T00:00:00Z","sequence":1,"bids":[["0.48",20],["0.47",40]],"asks":[["0.50",4],["0.51",4]],"momentum":2.0}
+{"event_type":"orderbook_delta","market_id":"KXTEST-YES","exchange_ts":"2026-01-01T00:00:01Z","received_ts":"2026-01-01T00:00:01Z","sequence":2,"side":"ask","price":"0.50","delta_quantity":-2,"momentum":2.0}
+{"event_type":"orderbook_snapshot","market_id":"KXTEST-REJECT","event_id":"EVT2","title":"Synthetic rejected market","exchange_ts":"2026-01-01T00:00:02Z","received_ts":"2026-01-01T00:00:02Z","sequence":1,"bids":[["0.40",100]],"asks":[["0.80",100]],"momentum":3.0}
+{"event_type":"orderbook_snapshot","market_id":"KXTEST-YES","event_id":"EVT1","title":"Synthetic YES market","exchange_ts":"2026-01-01T00:00:03Z","received_ts":"2026-01-01T00:00:03Z","sequence":3,"bids":[["0.62",30],["0.61",30]],"asks":[["0.64",30],["0.65",30]],"momentum":-2.0}
+{"event_type":"market_status","market_id":"KXTEST-YES","exchange_ts":"2026-01-01T00:00:04Z","received_ts":"2026-01-01T00:00:04Z","sequence":4,"status":"closed"}
+{"event_type":"settlement","market_id":"KXTEST-YES","exchange_ts":"2026-01-01T00:00:05Z","received_ts":"2026-01-01T00:00:05Z","sequence":5,"yes_settles":true}

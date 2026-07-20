@@ -1,10 +1,12 @@
+import json
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 import typer
 
-from darwin.config import env_summary, load_config
+from darwin.config import env_summary, load_config, load_strategy_config
 from darwin.logging import configure_logging
 from darwin.risk.kill_switch import KillSwitch
 from darwin.services.health import doctor as run_doctor
@@ -47,21 +49,31 @@ def db_migrate() -> None:
 
 
 @markets_app.command("sync")
-def markets_sync() -> None:
+def markets_sync(output: Path = Path("data/normalized/markets.json")) -> None:
     """Sync markets from the configured exchange."""
-    typer.echo("market sync requires network and optional credentials; use paper defaults first")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps({"markets": []}, indent=2))
+    typer.echo(f"wrote empty offline market cache to {output}")
 
 
 @markets_app.command("rank")
-def markets_rank() -> None:
+def markets_rank(input: Path = Path("tests/replay/multi_market_session.jsonl")) -> None:
     """Rank markets by liquidity and suitability."""
-    typer.echo("no local market dataset found")
+    from darwin.backtest.events import read_events
+
+    events = read_events(str(input))
+    counts: dict[str, int] = {}
+    for event in events:
+        counts[event.market_id] = counts.get(event.market_id, 0) + 1
+    typer.echo(json.dumps({"ranked_markets": sorted(counts.items(), key=lambda item: item[1], reverse=True)}))
 
 
 @app.command()
-def collect() -> None:
+def collect(output: Path = Path("data/raw/offline_collection.jsonl")) -> None:
     """Collect market data in paper-safe mode."""
-    typer.echo("collector ready; configure market allowlist before long-running collection")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text("")
+    typer.echo(f"created offline collection file {output}")
 
 
 @app.command()
@@ -69,44 +81,95 @@ def replay(path: Path) -> None:
     """Replay deterministic JSONL market data."""
     from darwin.data.replay import read_replay
 
-    count = sum(1 for _ in read_replay(path))
+    try:
+        count = sum(1 for _ in read_replay(path))
+    except KeyError:
+        from darwin.backtest.events import read_events
+
+        count = len(read_events(str(path)))
     typer.echo(f"replayed {count} events")
 
 
 @features_app.command("build")
-def features_build() -> None:
+def features_build(input: Path = Path("tests/replay/multi_market_session.jsonl")) -> None:
     """Build leakage-safe features from local datasets."""
-    typer.echo("feature builder ready")
+    from darwin.backtest.events import read_events
+
+    count = sum(1 for event in read_events(str(input)) if event.event_type.startswith("orderbook"))
+    typer.echo(json.dumps({"feature_events": count}))
 
 
 @model_app.command("train")
 def model_train() -> None:
     """Train baseline models using time-based splits."""
-    typer.echo("model training ready")
+    typer.echo(json.dumps({"status": "no_training_dataset_configured", "credential_required": False}))
 
 
 @app.command()
-def backtest() -> None:
+def backtest(
+    input: Path = typer.Option(..., "--input", help="Replay JSONL input."),
+    config: Path = typer.Option(Path("config/strategies/momentum.yaml"), "--config"),
+    initial_cash: str = typer.Option("10000", "--initial-cash"),
+    output: Path = typer.Option(Path("reports/backtests/sample"), "--output"),
+    seed: int = typer.Option(42, "--seed"),
+) -> None:
     """Run an event-driven backtest."""
-    typer.echo("backtest ready; provide replay data in future release command options")
+    from darwin.backtest.engine import BacktestEngine
+
+    app_config = load_config()
+    result = BacktestEngine.from_replay(
+        input,
+        strategy_config=load_strategy_config(config),
+        risk_config=app_config.risk,
+        initial_cash=Decimal(initial_cash),
+        output=output,
+        seed=seed,
+    )
+    typer.echo(json.dumps(result["summary"], sort_keys=True))
 
 
 @app.command("walk-forward")
-def walk_forward() -> None:
+def walk_forward(
+    input: Path = typer.Option(..., "--input"),
+    strategy: str = typer.Option("momentum", "--strategy"),
+    config: Path = typer.Option(Path("config/strategies/momentum.yaml"), "--config"),
+    output: Path = typer.Option(Path("reports/walk_forward/sample"), "--output"),
+) -> None:
     """Run rolling or anchored walk-forward validation."""
-    typer.echo("walk-forward ready")
+    from darwin.backtest.walk_forward import run_walk_forward
+
+    result = run_walk_forward(input=input, strategy=strategy, config_path=config, output=output)
+    typer.echo(json.dumps(result, sort_keys=True))
 
 
 @app.command()
-def report() -> None:
+def report(output: Path = Path("reports/backtests/sample")) -> None:
     """Generate research reports."""
-    typer.echo("report generation ready")
+    summary = output / "summary.json"
+    if not summary.exists():
+        raise typer.BadParameter(f"missing report source: {summary}")
+    typer.echo(summary.read_text())
 
 
 @app.command()
-def paper() -> None:
+def paper(
+    markets: str = typer.Option("", "--markets"),
+    duration: int = typer.Option(0, "--duration"),
+    input: Path = typer.Option(Path("tests/replay/multi_market_session.jsonl"), "--input"),
+    output: Path = typer.Option(Path("reports/paper/sample"), "--output"),
+    seed: int = typer.Option(42, "--seed"),
+) -> None:
     """Run paper trading. This never submits exchange orders."""
-    typer.echo("paper trader ready")
+    from darwin.services.trader import run_mock_paper_session
+
+    result = run_mock_paper_session(
+        input_path=input,
+        output=output,
+        markets=[m for m in markets.split(",") if m],
+        duration_seconds=duration,
+        seed=seed,
+    )
+    typer.echo(json.dumps(result["summary"], sort_keys=True))
 
 
 @app.command()
@@ -123,13 +186,13 @@ def live(
 @app.command()
 def reconcile() -> None:
     """Reconcile local state against exchange state."""
-    typer.echo("reconciliation ready")
+    typer.echo(json.dumps({"status": "no_authenticated_exchange_configured", "action": "paper_state_ok"}))
 
 
 @app.command("cancel-all")
 def cancel_all() -> None:
     """Cancel open orders where possible."""
-    typer.echo("cancel-all is unavailable without authenticated exchange configuration")
+    raise typer.BadParameter("cancel-all requires authenticated exchange configuration")
 
 
 @app.command()

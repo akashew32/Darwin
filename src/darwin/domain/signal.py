@@ -28,6 +28,24 @@ class Signal(BaseModel):
     order: OrderRequest | None = None
 
 
+class StrategyDecision(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    market_id: str
+    asof_ts: datetime
+    action: str
+    target_yes_position: int
+    score: float
+    estimated_fair_value: Decimal
+    estimated_executable_price: Decimal
+    gross_edge: Decimal
+    estimated_fees: Decimal
+    estimated_slippage: Decimal
+    net_edge: Decimal
+    reasons: tuple[str, ...] = Field(default_factory=tuple)
+    proposed_orders: tuple[OrderRequest, ...] = Field(default_factory=tuple)
+
+
 class RiskDecision(BaseModel):
     model_config = ConfigDict(frozen=True)
 

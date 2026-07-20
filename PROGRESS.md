@@ -22,3 +22,21 @@ git ls-files | head -200
 - Implement the working end-to-end vertical path.
 - Expand tests and run final verification.
 - Commit in small groups and push to GitHub.
+
+## Core Vertical Path Slice
+
+- Strengthened portfolio accounting with realized P&L, duplicate fill idempotency, and settlement.
+- Added deterministic client order IDs.
+- Replaced the order manager with transition tracking and duplicate-fill handling.
+- Replaced top-of-book full-fill assumption with visible multi-level partial fill simulation.
+- Added risk context and fixed open-order counting.
+- Made momentum strategy position-aware with exit, stop-loss/take-profit, and non-colliding order IDs.
+- Replaced the backtest engine with an event loop that updates books, features, strategy, risk, fills, portfolio, metrics, and reports.
+- Added `tests/replay/multi_market_session.jsonl`.
+- Smoke ran:
+
+```bash
+.venv/bin/darwin backtest --input tests/replay/multi_market_session.jsonl --output reports/backtests/sample
+```
+
+Result: generated summary, CSVs, and HTML report with nonzero fees, spread cost, net P&L, partial entry fill, exit, settlement, and one risk rejection.

@@ -22,3 +22,11 @@ class PortfolioState(BaseModel):
     @property
     def gross_contracts(self) -> int:
         return sum(abs(p.yes_quantity) + abs(p.no_quantity) for p in self.positions.values())
+
+    @property
+    def gross_exposure(self) -> Decimal:
+        return sum((p.worst_case_loss for p in self.positions.values()), Decimal("0"))
+
+    @property
+    def net_yes_exposure(self) -> int:
+        return sum(p.net_yes_exposure for p in self.positions.values())

@@ -23,10 +23,13 @@ def acknowledge(order: Order, exchange_order_id: str, ts: datetime) -> Order:
 def apply_fill(order: Order, fill: Fill) -> Order:
     if order.status in {OrderStatus.FILLED, OrderStatus.REJECTED, OrderStatus.EXPIRED}:
         return order
-    new_filled = min(order.request.quantity, order.filled_quantity + fill.quantity)
+    applied_quantity = min(order.remaining_quantity, fill.quantity)
+    if applied_quantity <= 0:
+        return order
+    new_filled = order.filled_quantity + applied_quantity
     remaining = max(0, order.request.quantity - new_filled)
     previous_notional = (order.average_fill_price or Decimal("0")) * Decimal(order.filled_quantity)
-    fill_notional = fill.price * Decimal(fill.quantity)
+    fill_notional = fill.price * Decimal(applied_quantity)
     avg = (previous_notional + fill_notional) / Decimal(new_filled)
     status = OrderStatus.FILLED if remaining == 0 else OrderStatus.PARTIALLY_FILLED
     return order.model_copy(
@@ -50,5 +53,18 @@ def cancel(order: Order, ts: datetime, reason: str) -> Order:
             "remaining_quantity": 0,
             "updated_ts": ts,
             "cancellation_reason": reason,
+        }
+    )
+
+
+def reject(order: Order, ts: datetime, reason: str) -> Order:
+    if order.status in TERMINAL:
+        return order
+    return order.model_copy(
+        update={
+            "status": OrderStatus.REJECTED,
+            "remaining_quantity": 0,
+            "updated_ts": ts,
+            "rejection_reason": reason,
         }
     )

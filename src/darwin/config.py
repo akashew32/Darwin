@@ -149,6 +149,15 @@ def load_config(path: Path | None = None) -> DarwinConfig:
     return DarwinConfig.model_validate(_deep_update(data, env_overlay))
 
 
+def load_strategy_config(path: Path | None = None) -> StrategyConfig:
+    if path is None:
+        return StrategyConfig()
+    loaded = yaml.safe_load(path.read_text()) or {}
+    if not isinstance(loaded, dict):
+        raise ValueError(f"strategy config {path} must contain a mapping")
+    return StrategyConfig.model_validate(loaded)
+
+
 def require_live_cli_flag(config: DarwinConfig, live_flag: bool) -> None:
     if config.execution.mode == TradingMode.LIVE and not live_flag:
         raise ValueError("live mode requires the CLI --live flag")
