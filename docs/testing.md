@@ -10,7 +10,7 @@ make test
 
 Current expected result:
 
-- 134 tests passing
+- 162 tests passing
 - Ruff lint and format passing
 - strict mypy passing for `src/darwin`
 
@@ -32,3 +32,7 @@ The mock smoke test verifies initial snapshots, streaming events, a sequence gap
 snapshot recovery, reconnect handling, a risk rejection, simulated fills,
 portfolio updates, nonzero fees, report output, and zero exchange-order endpoint
 calls.
+
+Recorded Kalshi fixture tests normalize documented WebSocket orderbook,
+trade, ticker, lifecycle, duplicate, and sequence-gap messages without network
+or credentials.

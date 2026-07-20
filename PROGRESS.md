@@ -112,3 +112,45 @@ PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin paper-live \
 
 Observed summary: two simulated orders, two fills, one risk rejection, nonzero
 fees, nonzero realized P&L, clean shutdown, and `execution_endpoint_calls: 0`.
+
+## Read-Only Kalshi Market Data Provider
+
+- Re-verified current official Kalshi docs for REST/WS base URLs, public REST
+  market-data endpoints, WebSocket authentication, subscription payloads,
+  orderbook snapshots/deltas, public trades, market lifecycle messages,
+  keepalive, errors, sequence handling, rate limits, and current V2 order
+  endpoints that paper-live must not call.
+- Added `KalshiMarketDataProvider`, which satisfies `MarketDataProvider` with
+  only read-only methods: `list_markets`, `get_market`, `get_orderbook`,
+  `stream_market_events`, and `close`.
+- Strengthened Kalshi REST handling with response validation, retries,
+  exponential backoff, timeout-aware logging, and a small token bucket.
+- Strengthened Kalshi WebSocket handling with authenticated handshake support,
+  subscription tracking, reconnect/backoff, malformed-message counts, and
+  message metrics.
+- Added normalized mapping for Kalshi orderbook snapshots/deltas, public trades,
+  ticker metadata, lifecycle messages, sequence gaps, reconnects, and snapshot
+  recovery.
+- Added `paper-live --exchange-environment kalshi` and `--dry-run`. Dry-run
+  maintains books and metrics while skipping strategy, risk, orders, and fills.
+- Added rotated structured logs and `metrics.prom` output.
+- Updated the read-only dashboard to read live-paper report directories.
+- Added recorded Kalshi WebSocket fixture tests and fast stability-window tests.
+
+Verification:
+
+```bash
+make lint
+make typecheck
+make test
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin paper-live --markets KXTEST-A,KXTEST-B --duration 10 --exchange-environment mock --database-url sqlite:///./tmp-paper.sqlite3 --output reports/paper/mock-smoke --seed 42
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin paper-live --markets KXBTC-YES,KXETH-YES --exchange-environment kalshi --dry-run --duration 1 --database-url sqlite:///./tmp-kalshi-dry.sqlite3 --output reports/paper/kalshi-dry
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin replay tests/replay/multi_market_session.jsonl
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin backtest --input tests/replay/multi_market_session.jsonl --output reports/backtests/sample
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin walk-forward --input tests/replay/multi_market_session.jsonl --output reports/walk_forward/sample
+```
+
+Results: Ruff passed, mypy passed, `162 passed`. Mock live paper produced two
+orders, two fills, one risk rejection, nonzero fees/P&L, and
+`execution_endpoint_calls: 0`. Kalshi dry-run failed closed locally because no
+read-only WebSocket credentials were present.

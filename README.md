@@ -7,16 +7,17 @@ Darwin does not claim that any strategy is profitable. Reports must distinguish 
 ## Status
 
 Darwin is not production-ready. It now contains one replay research path and one
-mock live-data paper path:
+mock live-data paper path plus a read-only Kalshi market-data provider:
 
 - Fully implemented: deterministic replay, local order books, incremental features,
   position-aware momentum decisions, centralized risk checks, simulated order
   lifecycle, multi-level partial fills, portfolio accounting, fees, P&L,
   event-driven backtests, walk-forward sample evaluation, mock paper trading,
-  report output, read-only dashboard views over reports, mock live-data
-  paper trading, bounded normalized event queues, sequence-gap recovery, and
-  120+ offline tests.
-- Partially implemented: real Kalshi public streaming hookup, database model
+  report output, read-only dashboard views over reports, mock live-data paper
+  trading, read-only Kalshi market-data provider, bounded normalized event
+  queues, sequence-gap recovery, dry-run connectivity mode, Prometheus-style
+  metric export, and 150+ offline tests.
+- Partially implemented: credentialed Kalshi stream validation, database model
   breadth, dashboard breadth, market ranking, and statistical model training.
 - Requires credentials or network: live Kalshi market-data validation and
   authenticated read-only account data.
@@ -57,6 +58,10 @@ darwin collect --markets KXTEST-A,KXTEST-B --duration 5 --environment mock
 ```
 
 Default commands are paper-safe and do not require credentials.
+
+Kalshi REST market data is public, but Kalshi WebSocket streaming requires
+API-key credentials for the signed handshake. Darwin uses those only for
+read-only market data in `paper-live`.
 
 ## Replay
 
@@ -114,6 +119,15 @@ darwin paper-live \
 Safety boundary: `paper-live` depends on a read-only market-data protocol and a
 local paper broker. The service has no dependency on the live execution broker
 and the mock smoke test asserts zero exchange-order endpoint calls.
+
+Kalshi dry-run:
+
+```bash
+darwin paper-live \
+  --markets KXBTC-YES,KXETH-YES \
+  --exchange-environment kalshi \
+  --dry-run
+```
 
 ## Dashboard
 
