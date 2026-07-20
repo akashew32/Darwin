@@ -1,0 +1,6 @@
+{"type":"subscribed","id":1,"msg":{"channel":"orderbook_delta","sid":2}}
+{"type":"orderbook_snapshot","sid":2,"seq":10,"msg":{"market_ticker":"KXTEST-A","market_id":"m1","yes_dollars_fp":[["0.4800","100.00"]],"no_dollars_fp":[["0.5000","40.00"]]}}
+{"type":"orderbook_delta","sid":2,"seq":11,"msg":{"market_ticker":"KXTEST-A","market_id":"m1","price_dollars":"0.4900","delta_fp":"20.00","side":"yes","ts_ms":1760000001000}}
+{"type":"trade","sid":3,"msg":{"trade_id":"t1","market_ticker":"KXTEST-A","yes_price_dollars":"0.5100","no_price_dollars":"0.4900","count_fp":"5.00","taker_side":"yes","ts_ms":1760000002000}}
+{"type":"market_lifecycle_v2","sid":4,"msg":{"market_ticker":"KXTEST-A","event_type":"activated","open_ts":1760000000,"close_ts":1760003600,"price_level_structure":"linear_cent"}}
+{"type":"orderbook_delta","sid":2,"seq":13,"msg":{"market_ticker":"KXTEST-A","market_id":"m1","price_dollars":"0.4900","delta_fp":"-5.00","side":"yes","ts_ms":1760000003000}}
