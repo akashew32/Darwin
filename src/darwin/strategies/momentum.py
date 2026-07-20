@@ -68,8 +68,8 @@ class MomentumStrategy(Strategy):
         ):
             reasons.append("extreme_probability_no_trade")
 
-        stop_loss = context.unrealized_pnl <= Decimal("-0.50") and net_yes != 0
-        take_profit = context.unrealized_pnl >= Decimal("0.50") and net_yes != 0
+        stop_loss = context.unrealized_pnl <= -Decimal(str(self.config.stop_loss)) and net_yes != 0
+        take_profit = context.unrealized_pnl >= Decimal(str(self.config.take_profit)) and net_yes != 0
         reversal_exit = net_yes > 0 and score < -self.config.exit_threshold
         no_reversal_exit = net_yes < 0 and score > self.config.exit_threshold
         if stop_loss or take_profit or reversal_exit or no_reversal_exit:

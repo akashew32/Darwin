@@ -4,12 +4,23 @@ from darwin.domain.enums import OrderIntent, OutcomeSide
 from darwin.domain.fill import Fill
 from darwin.domain.portfolio import PortfolioState
 from darwin.domain.position import Position
+from darwin.portfolio.trades import ClosedTrade
 
 
 def apply_fill_to_portfolio(portfolio: PortfolioState, fill: Fill) -> PortfolioState:
+    updated, _ = apply_fill_with_closed_trade(portfolio, fill)
+    return updated
+
+
+def apply_fill_with_closed_trade(
+    portfolio: PortfolioState,
+    fill: Fill,
+    *,
+    exit_reason: str = "fill",
+) -> tuple[PortfolioState, ClosedTrade | None]:
     position = portfolio.positions.get(fill.market_id, Position(market_id=fill.market_id))
     if fill.fill_id in position.seen_fill_ids:
-        return portfolio
+        return portfolio, None
 
     notional = fill.price * Decimal(fill.quantity)
     cash = portfolio.cash
@@ -19,6 +30,7 @@ def apply_fill_to_portfolio(portfolio: PortfolioState, fill: Fill) -> PortfolioS
     avg_yes = position.average_yes_cost
     avg_no = position.average_no_cost
 
+    closed_trade: ClosedTrade | None = None
     if fill.intent == OrderIntent.BUY:
         cash -= notional + fill.fee
         if fill.outcome == OutcomeSide.YES:
@@ -32,12 +44,18 @@ def apply_fill_to_portfolio(portfolio: PortfolioState, fill: Fill) -> PortfolioS
         if fill.outcome == OutcomeSide.YES:
             if fill.quantity > yes_qty:
                 raise ValueError("cannot sell more YES contracts than held")
-            realized += (fill.price - avg_yes) * Decimal(fill.quantity) - fill.fee
+            gross = (fill.price - avg_yes) * Decimal(fill.quantity)
+            net = gross - fill.fee
+            realized += net
+            closed_trade = _closed_trade(fill, avg_yes, gross, fill.fee, net, exit_reason)
             yes_qty -= fill.quantity
         else:
             if fill.quantity > no_qty:
                 raise ValueError("cannot sell more NO contracts than held")
-            realized += (fill.price - avg_no) * Decimal(fill.quantity) - fill.fee
+            gross = (fill.price - avg_no) * Decimal(fill.quantity)
+            net = gross - fill.fee
+            realized += net
+            closed_trade = _closed_trade(fill, avg_no, gross, fill.fee, net, exit_reason)
             no_qty -= fill.quantity
 
     new_position = position.model_copy(
@@ -53,7 +71,7 @@ def apply_fill_to_portfolio(portfolio: PortfolioState, fill: Fill) -> PortfolioS
     )
     positions = dict(portfolio.positions)
     positions[fill.market_id] = new_position
-    return portfolio.model_copy(
+    updated = portfolio.model_copy(
         update={
             "cash": cash,
             "positions": positions,
@@ -61,6 +79,7 @@ def apply_fill_to_portfolio(portfolio: PortfolioState, fill: Fill) -> PortfolioS
             "realized_pnl": sum((p.realized_pnl for p in positions.values()), Decimal("0")),
         }
     )
+    return updated, closed_trade
 
 
 def settle_market(
@@ -104,3 +123,29 @@ def _weighted_average(old_price: Decimal, old_qty: int, price: Decimal, qty: int
     if old_qty + qty <= 0:
         return Decimal("0")
     return ((old_price * Decimal(old_qty)) + (price * Decimal(qty))) / Decimal(old_qty + qty)
+
+
+def _closed_trade(
+    fill: Fill,
+    average_entry_price: Decimal,
+    gross: Decimal,
+    fees: Decimal,
+    net: Decimal,
+    exit_reason: str,
+) -> ClosedTrade:
+    exit_ts = fill.exchange_ts or fill.received_ts
+    return ClosedTrade(
+        entry_ts=exit_ts,
+        exit_ts=exit_ts,
+        market_id=fill.market_id,
+        outcome=fill.outcome,
+        quantity=fill.quantity,
+        average_entry_price=average_entry_price,
+        average_exit_price=fill.price,
+        gross_realized_pnl=gross,
+        fees=fees,
+        slippage=Decimal("0"),
+        net_realized_pnl=net,
+        holding_seconds=0.0,
+        exit_reason=exit_reason,
+    )

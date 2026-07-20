@@ -20,7 +20,8 @@ from darwin.exchanges.kalshi.orderbook import LocalOrderBook
 from darwin.execution.order_manager import OrderManager
 from darwin.execution.simulated_broker import SimulatedBroker
 from darwin.features.pipeline import StatefulFeaturePipeline
-from darwin.portfolio.accounting import apply_fill_to_portfolio, settle_market
+from darwin.portfolio.accounting import apply_fill_with_closed_trade, settle_market
+from darwin.portfolio.equity import calculate_equity
 from darwin.portfolio.pnl import mark_portfolio
 from darwin.risk.engine import RiskContext, RiskEngine
 from darwin.risk.kill_switch import KillSwitch
@@ -86,7 +87,7 @@ class BacktestEngine:
             self._handle_event(event)
 
         equity = [Decimal(str(row["equity"])) for row in self.rows["equity_curve"]]
-        trade_pnls = [Decimal(str(row["realized_pnl"])) for row in self.rows["trades"]]
+        trade_pnls = [Decimal(str(row["net_realized_pnl"])) for row in self.rows["trades"]]
         summary = summarize(
             initial_cash=self.initial_cash,
             final_cash=self.portfolio.cash,
@@ -222,7 +223,9 @@ class BacktestEngine:
             )
             for fill in fill_result.fills:
                 self.order_manager.apply_fill(fill)
-                self.portfolio = apply_fill_to_portfolio(self.portfolio, fill)
+                self.portfolio, closed_trade = apply_fill_with_closed_trade(
+                    self.portfolio, fill, exit_reason="strategy_exit"
+                )
                 self.rows["fills"].append(
                     {
                         "ts": fill.received_ts.isoformat(),
@@ -236,17 +239,35 @@ class BacktestEngine:
                         "fee": float(fill.fee),
                     }
                 )
-                self.rows["trades"].append(
-                    {
-                        "ts": fill.received_ts.isoformat(),
-                        "market_id": fill.market_id,
-                        "realized_pnl": float(self.portfolio.realized_pnl),
-                    }
-                )
+                if closed_trade is not None:
+                    self.rows["trades"].append(
+                        {
+                            "entry_ts": closed_trade.entry_ts.isoformat(),
+                            "exit_ts": closed_trade.exit_ts.isoformat(),
+                            "market_id": closed_trade.market_id,
+                            "outcome": closed_trade.outcome.value,
+                            "quantity": closed_trade.quantity,
+                            "average_entry_price": float(closed_trade.average_entry_price),
+                            "average_exit_price": float(closed_trade.average_exit_price),
+                            "gross_realized_pnl": float(closed_trade.gross_realized_pnl),
+                            "fees": float(closed_trade.fees),
+                            "slippage": float(closed_trade.slippage),
+                            "net_realized_pnl": float(closed_trade.net_realized_pnl),
+                            "holding_seconds": closed_trade.holding_seconds,
+                            "exit_reason": closed_trade.exit_reason,
+                        }
+                    )
         self._record_equity(event)
 
     def _record_equity(self, event: BacktestEvent) -> None:
-        equity = self.portfolio.cash + self.portfolio.unrealized_pnl
+        marks = {
+            market_id: book.current_snapshot().midprice or Decimal("0.5")
+            for market_id, book in self.books.items()
+            if book.snapshot is not None
+        }
+        equity = calculate_equity(
+            self.portfolio, marks, tuple(self.order_manager.open_orders())
+        )
         self.rows["equity_curve"].append(
             {
                 "ts": event.received_ts.isoformat(),

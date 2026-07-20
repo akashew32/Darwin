@@ -55,6 +55,16 @@ class RiskConfig(BaseModel):
     min_expected_edge: float = 0.01
     near_close_minutes: int = 15
     kill_switch_path: Path = Path("data/kill_switch.json")
+    max_estimated_slippage: float = 0.05
+    daily_loss_limit: float = 100.0
+    max_drawdown: float = 250.0
+    exchange_error_limit: int = 3
+    rejection_limit: int = 5
+    max_queue_utilization: float = 0.9
+    max_reconnect_count: int = 5
+    max_sequence_gaps: int = 3
+    max_clock_drift_seconds: float = 2.0
+    max_depth_participation: float = 0.5
 
 
 class ExecutionConfig(BaseModel):
@@ -78,6 +88,13 @@ class StrategyConfig(BaseModel):
     order_quantity: int = 1
     max_order_age_seconds: int = 30
     no_trade_extreme_probability: float = 0.03
+    stop_loss: float = 0.50
+    take_profit: float = 0.50
+    entry_cooldown_seconds: int = 0
+    reentry_cooldown_seconds: int = 0
+    minimum_holding_seconds: int = 0
+    maximum_holding_seconds: int = 3600
+    trailing_stop: float | None = None
     weights: dict[str, float] = Field(
         default_factory=lambda: {
             "momentum": 0.45,

@@ -49,11 +49,21 @@ def db_migrate() -> None:
 
 
 @markets_app.command("sync")
-def markets_sync(output: Path = Path("data/normalized/markets.json")) -> None:
+def markets_sync(
+    output: Path = Path("data/normalized/markets.json"),
+    environment: str = typer.Option("mock", "--environment"),
+) -> None:
     """Sync markets from the configured exchange."""
+    if environment != "mock":
+        raise typer.BadParameter("non-mock market sync requires network credentials and is not enabled here")
+    from darwin.exchanges.mock import MockMarketDataProvider
+
+    import asyncio
+
+    markets = asyncio.run(MockMarketDataProvider().list_markets(status="open"))
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps({"markets": []}, indent=2))
-    typer.echo(f"wrote empty offline market cache to {output}")
+    output.write_text(json.dumps({"markets": [market.model_dump(mode="json") for market in markets]}, indent=2))
+    typer.echo(f"wrote {len(markets)} markets to {output}")
 
 
 @markets_app.command("rank")
@@ -73,11 +83,46 @@ def markets_rank(input: Path = Path("tests/replay/multi_market_session.jsonl")) 
 
 
 @app.command()
-def collect(output: Path = Path("data/raw/offline_collection.jsonl")) -> None:
+def collect(
+    markets: str = typer.Option(..., "--markets"),
+    duration: int = typer.Option(5, "--duration"),
+    environment: str = typer.Option("mock", "--environment"),
+    output: Path = Path("data/raw/mock_collection.jsonl"),
+) -> None:
     """Collect market data in paper-safe mode."""
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text("")
-    typer.echo(f"created offline collection file {output}")
+    if environment != "mock":
+        raise typer.BadParameter("live collection requires authenticated read-only WebSocket setup")
+    from darwin.exchanges.mock import MockMarketDataProvider
+
+    import asyncio
+
+    market_ids = [m for m in markets.split(",") if m]
+
+    async def _run() -> int:
+        count = 0
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w") as handle:
+            async for event in MockMarketDataProvider().stream_market_events(market_ids):
+                handle.write(
+                    json.dumps(
+                        {
+                            "event_type": event.event_type,
+                            "market_id": event.market_id,
+                            "received_ts": event.received_ts.isoformat(),
+                            "sequence": event.sequence,
+                            "payload": event.payload,
+                        },
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
+                count += 1
+                if count >= max(1, duration):
+                    break
+        return count
+
+    count = asyncio.run(_run())
+    typer.echo(f"collected {count} mock events to {output}")
 
 
 @app.command()
@@ -174,6 +219,55 @@ def paper(
         markets=[m for m in markets.split(",") if m],
         duration_seconds=duration,
         seed=seed,
+    )
+    typer.echo(json.dumps(result["summary"], sort_keys=True))
+
+
+@app.command("paper-live")
+def paper_live(
+    markets: str = typer.Option(..., "--markets"),
+    duration: int = typer.Option(10, "--duration"),
+    config: Path = typer.Option(Path("config/strategies/momentum.yaml"), "--config"),
+    risk_config: Path | None = typer.Option(None, "--risk-config"),
+    database_url: str = typer.Option("sqlite:///./darwin-paper.sqlite3", "--database-url"),
+    output: Path = typer.Option(Path("reports/paper/live-session"), "--output"),
+    seed: int = typer.Option(42, "--seed"),
+    log_level: str = typer.Option("INFO", "--log-level"),
+    resume: str | None = typer.Option(None, "--resume"),
+    exchange_environment: str = typer.Option("mock", "--exchange-environment"),
+    max_events: int | None = typer.Option(None, "--max-events"),
+) -> None:
+    """Run live-data paper trading with simulated orders only."""
+    if not markets:
+        raise typer.BadParameter("--markets is required")
+    if resume:
+        typer.echo(f"resume requested for session {resume}; current mock path starts a fresh session")
+    configure_logging(log_level)
+    typer.echo("PAPER-ONLY: real market data, simulated orders, no exchange order endpoints.")
+    from darwin.execution.config import ExecutionSimulationConfig
+    from darwin.exchanges.mock import MockMarketDataProvider
+    from darwin.services.live_paper_trader import LivePaperSessionConfig, LivePaperTrader
+
+    import asyncio
+
+    if exchange_environment != "mock":
+        raise typer.BadParameter("only --exchange-environment mock is enabled without credentials")
+    app_config = load_config()
+    result = asyncio.run(
+        LivePaperTrader(
+            provider=MockMarketDataProvider(),
+            strategy_config=load_strategy_config(config),
+            risk_config=app_config.risk,
+            execution_config=ExecutionSimulationConfig(random_seed=seed),
+            session_config=LivePaperSessionConfig(
+                markets=[m for m in markets.split(",") if m],
+                duration_seconds=duration,
+                output=output,
+                database_url=database_url,
+                seed=seed,
+                max_events=max_events,
+            ),
+        ).run()
     )
     typer.echo(json.dumps(result["summary"], sort_keys=True))
 

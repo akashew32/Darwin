@@ -73,7 +73,7 @@ class RiskEngine:
             reasons.append("spread_limit")
         if context.data_age_seconds > self.config.max_market_data_age_seconds:
             reasons.append("stale_market_data")
-        if context.estimated_slippage > Decimal("0.05"):
+        if context.estimated_slippage > Decimal(str(self.config.max_estimated_slippage)):
             reasons.append("slippage_limit")
         if context.expected_net_edge < Decimal(str(self.config.min_expected_edge)):
             reasons.append("minimum_edge")
@@ -89,13 +89,13 @@ class RiskEngine:
             reasons.append("feed_unhealthy")
         if context.position_mismatch:
             reasons.append("position_mismatch")
-        if context.exchange_error_count >= 3:
+        if context.exchange_error_count >= self.config.exchange_error_limit:
             reasons.append("exchange_error_circuit_breaker")
-        if context.rejection_count >= 5:
+        if context.rejection_count >= self.config.rejection_limit:
             reasons.append("rejection_circuit_breaker")
-        if context.daily_realized_pnl <= Decimal("-100"):
+        if context.daily_realized_pnl <= -Decimal(str(self.config.daily_loss_limit)):
             reasons.append("daily_loss_limit")
-        if context.drawdown <= Decimal("-250"):
+        if context.drawdown <= -Decimal(str(self.config.max_drawdown)):
             reasons.append("drawdown_limit")
 
         decision = RiskDecisionType.REJECTED if reasons else RiskDecisionType.APPROVED
