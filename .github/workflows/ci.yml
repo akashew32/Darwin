@@ -1,5 +1,9 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -12,3 +16,5 @@ jobs:
       - run: make lint
       - run: make typecheck
       - run: make test
+      - run: PYTHONPATH=src darwin paper-live --markets KXTEST-A,KXTEST-B --exchange-environment mock --dry-run --duration 10 --output reports/paper/ci-mock-dry
+      - run: PYTHONPATH=src pytest tests/unit/test_kalshi_market_data_provider.py -q

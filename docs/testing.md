@@ -10,7 +10,7 @@ make test
 
 Current expected result:
 
-- 162 tests passing
+- 191 offline tests passing, with 3 opt-in credentialed Kalshi tests deselected
 - Ruff lint and format passing
 - strict mypy passing for `src/darwin`
 
@@ -36,3 +36,9 @@ calls.
 Recorded Kalshi fixture tests normalize documented WebSocket orderbook,
 trade, ticker, lifecycle, duplicate, and sequence-gap messages without network
 or credentials.
+
+Credentialed live checks are opt-in and never submit orders:
+
+```bash
+pytest -m kalshi_live
+```

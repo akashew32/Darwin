@@ -154,3 +154,53 @@ Results: Ruff passed, mypy passed, `162 passed`. Mock live paper produced two
 orders, two fills, one risk rejection, nonzero fees/P&L, and
 `execution_endpoint_calls: 0`. Kalshi dry-run failed closed locally because no
 read-only WebSocket credentials were present.
+
+## Kalshi Live Validation Hardening
+
+- Re-audited Kalshi REST, WebSocket, provider selection, live-paper shutdown,
+  subscription handling, sequence handling, tests, and CI.
+- Added `docs/kalshi_live_validation_gap_analysis.md`.
+- Split WebSocket subscriptions into a market-filtered request
+  (`orderbook_delta`, `ticker`, `trade` with `market_tickers`) and a global
+  lifecycle request (`market_lifecycle_v2` without ticker filters).
+- Added subscription specs and acknowledgement state with request id,
+  subscription id, channels, markets, creation timestamp, last-message timestamp,
+  and reconnect generation.
+- Replaced ad hoc sequence keys with explicit `SequenceDomain` including
+  connection generation, subscription id, channel, and market ticker.
+- Corrected duplicate, backward, and forward-gap semantics. Duplicates are
+  dropped without recovery; backward events are health diagnostics; forward gaps
+  trigger snapshot recovery.
+- Reset sequence baselines on reconnect and emit normalized reconnect events.
+- Refactored WebSocket reading to use the bounded raw-message queue, shutdown
+  sentinels, active socket close, and interruptible reconnect backoff.
+- Switched WebSocket auth timestamps to the injected clock and added deterministic
+  signature tests.
+- Added paginated market listing, `darwin markets list-live`, and
+  `darwin validate-kalshi-feed`.
+- Added dry-run validation artifacts and REST/local book validation rows.
+- Replaced hardcoded execution endpoint counts with an injected
+  `ExecutionEndpointGuard`.
+- Updated GitHub Actions triggers and CI smoke/fixture commands.
+- Added opt-in `pytest -m kalshi_live` tests that skip without credentials and
+  never submit orders.
+
+Verification:
+
+```bash
+make lint
+make typecheck
+make test
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin markets sync --environment mock
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin paper-live --markets KXTEST-A,KXTEST-B --exchange-environment mock --dry-run --duration 10 --output reports/paper/mock-dry
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin paper-live --markets KXTEST-A,KXTEST-B --exchange-environment mock --duration 10 --output reports/paper/mock-session
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin backtest --input tests/replay/multi_market_session.jsonl --output reports/backtests/sample
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin walk-forward --input tests/replay/multi_market_session.jsonl --output reports/walk_forward/sample
+PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin validate-kalshi-feed --markets KXBTC-YES,KXETH-YES --duration 1 --output reports/validation/kalshi-feed
+```
+
+Results: Ruff passed; mypy passed; `191 passed, 3 deselected`. Mock dry-run
+produced validation artifacts and zero orders/fills. Mock paper session produced
+two orders, two fills, one risk rejection, nonzero fees/P&L, and
+`execution_endpoint_calls: 0`. Kalshi validation failed closed locally because no
+WebSocket credentials were configured.

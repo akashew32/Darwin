@@ -24,9 +24,10 @@ PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin paper-live --markets KXTEST-A,
 
 - Tests: `134 passed`.
 - Tests after Kalshi read-only market-data phase: `162 passed`.
+- Tests after Kalshi live-validation hardening: `191 passed, 3 deselected`.
 - Lint: `All checks passed`.
-- Format: `132 files already formatted`.
-- Typecheck: `Success: no issues found in 94 source files`.
+- Format: `134 files already formatted`.
+- Typecheck after hardening: `Success: no issues found in 95 source files`.
 - Doctor: paper defaults, database config, kill switch, and live guard checks passed.
 - Database migration: SQLite tables created.
 - Market sync: wrote 2 mock markets.
@@ -37,6 +38,10 @@ PYTHONPATH=src PATH="$PWD/.venv/bin:$PATH" darwin paper-live --markets KXTEST-A,
 - Mock live paper: `orders=2`, `fills=2`, `risk_rejections=1`, `fees=0.0004`, `realized_pnl=0.1188`, `execution_endpoint_calls=0`.
 - Kalshi dry-run without credentials: failed closed with
   `Kalshi WebSocket market data requires KALSHI_API_KEY_ID and a private key`.
+- Mock dry-run validation artifacts generated: `connection_summary.json`,
+  `subscriptions.json`, `market_health.csv`, `sequence_events.csv`,
+  `received_message_types.csv`, `orderbook_validation.csv`, `metrics.prom`, and
+  `dry_run_report.html`.
 
 ## Notes
 

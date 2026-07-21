@@ -3,7 +3,7 @@
 Kalshi is the first exchange. Exchange details are isolated under
 `src/darwin/exchanges/kalshi`.
 
-Verified choices, rechecked on 2026-07-20 against official Kalshi
+Verified choices, rechecked on 2026-07-21 against official Kalshi
 documentation:
 
 - Production REST base URL: `https://external-api.kalshi.com/trade-api/v2`.
@@ -30,7 +30,16 @@ documentation:
 - Current V2 order payload uses `ticker`, `client_order_id`, book `side`
   (`bid`/`ask`), fixed-point `count`, fixed-point dollar `price`,
   `time_in_force`, and self-trade-prevention fields.
-- WebSocket orderbook updates use channel `orderbook_delta`, send `orderbook_snapshot` first, then deltas with `seq`; subscriptions use `market_ticker` or `market_tickers`.
+- WebSocket subscriptions are split into two requests:
+  - market-filtered channels `orderbook_delta`, `ticker`, and `trade` with
+    `market_tickers`.
+  - global lifecycle channel `market_lifecycle_v2` with no ticker filter.
+- Subscribe acknowledgements include request `id`, subscribed `channel`, and
+  subscription id `sid`. Darwin tracks each request independently and treats
+  missing required acknowledgements as an unhealthy feed.
+- WebSocket orderbook updates use channel `orderbook_delta`, send
+  `orderbook_snapshot` first, then deltas with `seq`; subscriptions use
+  `market_ticker` or `market_tickers` only on market-filtered channels.
 - REST orderbook may provide fixed-point dollar fields in `orderbook_fp.yes_dollars` and `orderbook_fp.no_dollars`; WebSocket snapshots may use `yes_dollars_fp` and `no_dollars_fp`.
 - WebSocket public trades use channel `trade` with `trade_id`,
   `market_ticker`, YES/NO fixed-point prices, `count_fp`, `taker_side`, and
@@ -45,6 +54,17 @@ documentation:
 - Reconnect expectations: reconnect with exponential backoff, resubscribe, and
   rebuild local order books from fresh snapshots before resuming decisions after
   sequence gaps.
+- Sequence scope: Kalshi WebSocket messages include `sid` and `seq`. Darwin
+  represents sequence state as `(connection_generation, sid, channel,
+  market_ticker)` for orderbook streams so interleaved markets do not create
+  false gaps, and old baselines are discarded after reconnect.
+- Duplicate sequence (`seq == previous`) is dropped idempotently and does not
+  trigger snapshot recovery.
+- Backward sequence (`seq < previous`) is recorded as a health event and dropped;
+  repeated occurrences can escalate to recovery.
+- Forward gap (`seq > previous + 1`) marks the market recovering, emits
+  `sequence_gap`, loads a fresh REST snapshot, emits `snapshot_recovery`, and
+  resumes decisions only after the book is replaced.
 - Live paper trading uses only read-only market-data methods. It must not call
   create, amend, or cancel order endpoints.
 

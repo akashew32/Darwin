@@ -16,7 +16,8 @@ mock live-data paper path plus a read-only Kalshi market-data provider:
   report output, read-only dashboard views over reports, mock live-data paper
   trading, read-only Kalshi market-data provider, bounded normalized event
   queues, sequence-gap recovery, dry-run connectivity mode, Prometheus-style
-  metric export, and 150+ offline tests.
+  metric export, split Kalshi WebSocket subscriptions, paginated market listing,
+  validation reports, and 190+ offline tests.
 - Partially implemented: credentialed Kalshi stream validation, database model
   breadth, dashboard breadth, market ranking, and statistical model training.
 - Requires credentials or network: live Kalshi market-data validation and
@@ -129,6 +130,15 @@ darwin paper-live \
   --dry-run
 ```
 
+Operator feed validation:
+
+```bash
+darwin validate-kalshi-feed \
+  --markets KXBTC-YES,KXETH-YES \
+  --duration 300 \
+  --output reports/validation/kalshi-feed
+```
+
 ## Dashboard
 
 ```bash
@@ -147,7 +157,8 @@ make lint
 make typecheck
 ```
 
-Current expected local result: 134 tests, Ruff clean, and strict mypy clean.
+Current expected local result: 191 offline tests, 3 credentialed tests
+deselected, Ruff clean, and strict mypy clean.
 
 ## Configuration
 

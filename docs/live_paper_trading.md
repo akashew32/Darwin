@@ -32,6 +32,17 @@ darwin paper-live \
   --dry-run
 ```
 
+Dry-run writes:
+
+- `connection_summary.json`
+- `subscriptions.json`
+- `market_health.csv`
+- `sequence_events.csv`
+- `received_message_types.csv`
+- `orderbook_validation.csv`
+- `metrics.prom`
+- `dry_run_report.html`
+
 Safety boundary:
 
 - The live-paper service accepts only `MarketDataProvider`.
@@ -40,6 +51,8 @@ Safety boundary:
 - It does not import or receive a live execution broker.
 - Paper tests assert that submit, amend, and cancel exchange endpoints are not
   reachable from this path.
+- `execution_endpoint_calls` comes from an injected safety guard rather than a
+  hardcoded self-report.
 
 Current limitations:
 
