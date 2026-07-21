@@ -63,4 +63,5 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m 'not kalshi_live'"
+markers = ["kalshi_live: opt-in credentialed read-only Kalshi market-data tests"]

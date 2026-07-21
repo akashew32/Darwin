@@ -37,6 +37,59 @@ def test_live_paper_dry_run_skips_strategy_orders_and_fills(tmp_path: Path) -> N
     assert (output / "books.csv").read_text()
 
 
+def test_live_paper_dry_run_writes_validation_artifacts(tmp_path: Path) -> None:
+    output = tmp_path / "dry-artifacts"
+    asyncio.run(
+        LivePaperTrader(
+            provider=MockMarketDataProvider(),
+            strategy_config=StrategyConfig(order_quantity=5, max_spread=0.5),
+            risk_config=RiskConfig(kill_switch_path=tmp_path / "kill.json"),
+            execution_config=ExecutionSimulationConfig(),
+            session_config=LivePaperSessionConfig(
+                markets=["KXTEST-A", "KXTEST-B"],
+                duration_seconds=10,
+                output=output,
+                database_url=f"sqlite:///{tmp_path / 'dry-artifacts.sqlite3'}",
+                seed=42,
+                dry_run=True,
+            ),
+        ).run()
+    )
+    expected = {
+        "connection_summary.json",
+        "subscriptions.json",
+        "market_health.csv",
+        "sequence_events.csv",
+        "received_message_types.csv",
+        "orderbook_validation.csv",
+        "metrics.prom",
+        "dry_run_report.html",
+    }
+    assert expected.issubset({path.name for path in output.iterdir()})
+
+
+def test_live_paper_dry_run_metrics_are_prometheus_style(tmp_path: Path) -> None:
+    output = tmp_path / "dry-metrics"
+    asyncio.run(
+        LivePaperTrader(
+            provider=MockMarketDataProvider(),
+            strategy_config=StrategyConfig(order_quantity=5, max_spread=0.5),
+            risk_config=RiskConfig(kill_switch_path=tmp_path / "kill.json"),
+            execution_config=ExecutionSimulationConfig(),
+            session_config=LivePaperSessionConfig(
+                markets=["KXTEST-A", "KXTEST-B"],
+                duration_seconds=10,
+                output=output,
+                database_url=f"sqlite:///{tmp_path / 'dry-metrics.sqlite3'}",
+                seed=42,
+                dry_run=True,
+            ),
+        ).run()
+    )
+    metrics = (output / "metrics.prom").read_text()
+    assert "darwin_paper_execution_endpoint_calls_total 0" in metrics
+
+
 def test_paper_live_cli_dry_run_mock(tmp_path: Path) -> None:
     output = tmp_path / "dry-cli"
     result = runner.invoke(
