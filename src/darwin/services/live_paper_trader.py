@@ -18,6 +18,7 @@ from darwin.exchanges.kalshi.orderbook import LocalOrderBook
 from darwin.execution.config import ExecutionSimulationConfig
 from darwin.execution.order_manager import OrderManager
 from darwin.execution.paper_broker import PaperBroker
+from darwin.execution.safety import ExecutionEndpointGuard
 from darwin.features.pipeline import StatefulFeaturePipeline
 from darwin.portfolio.accounting import apply_fill_with_closed_trade
 from darwin.portfolio.equity import calculate_equity
@@ -56,6 +57,7 @@ class LivePaperTrader:
         risk_config: RiskConfig,
         execution_config: ExecutionSimulationConfig,
         session_config: LivePaperSessionConfig,
+        execution_guard: ExecutionEndpointGuard | None = None,
     ) -> None:
         self.provider = provider
         self.strategy = MomentumStrategy(strategy_config)
@@ -63,6 +65,7 @@ class LivePaperTrader:
         self.execution_config = execution_config
         self.session_config = session_config
         self.broker = PaperBroker()
+        self.execution_guard = execution_guard or ExecutionEndpointGuard()
         self.order_manager = OrderManager()
         self.portfolio = PortfolioState(cash=Decimal("10000"))
         self.features = StatefulFeaturePipeline()
@@ -78,11 +81,16 @@ class LivePaperTrader:
             "signals": [],
             "risk_decisions": [],
             "health": [],
+            "market_health": [],
             "equity_curve": [],
             "trades": [],
             "metrics": [],
             "books": [],
+            "sequence_events": [],
+            "received_message_types": [],
+            "orderbook_validation": [],
         }
+        self.message_type_counts: dict[str, int] = {}
         self._stop = asyncio.Event()
         self._db = _connect_sqlite(session_config.database_url)
 
@@ -90,8 +98,19 @@ class LivePaperTrader:
         self.session_config.output.mkdir(parents=True, exist_ok=True)
         self._init_db()
         self._install_signal_handlers()
+        if len(set(self.session_config.markets)) != len(self.session_config.markets):
+            raise ValueError("duplicate requested markets are not allowed")
+        market_summaries: list[dict[str, Any]] = []
         for market_id in self.session_config.markets:
-            await self.provider.get_market(market_id)
+            market = await self.provider.get_market(market_id)
+            market_summaries.append(
+                {
+                    "market_id": market.market_id,
+                    "title": market.title,
+                    "status": market.status.value,
+                    "close_time": market.close_time.isoformat() if market.close_time else None,
+                }
+            )
 
         for market_id in self.session_config.markets:
             snapshot = await self.provider.get_orderbook(market_id)
@@ -100,8 +119,18 @@ class LivePaperTrader:
             self.health.market(market_id).last_snapshot_ts = snapshot.received_ts
             self.health.market(market_id).last_sequence = snapshot.sequence
 
+        self.rows["health"].append(
+            {
+                "ts": datetime.now(UTC).isoformat(),
+                "state": "healthy",
+                "reason": "markets_validated",
+                "markets": json.dumps(market_summaries),
+            }
+        )
+
         producer = asyncio.create_task(self._produce())
         consumer = asyncio.create_task(self._consume())
+        monitor = asyncio.create_task(self._health_monitor())
         if self.session_config.duration_seconds > 0:
             timer = asyncio.create_task(self._duration_timer())
             await asyncio.wait({producer, consumer, timer}, return_when=asyncio.FIRST_COMPLETED)
@@ -109,6 +138,7 @@ class LivePaperTrader:
         await producer
         self._stop.set()
         await consumer
+        await monitor
         await self.provider.close()
         return self._finish("completed")
 
@@ -154,6 +184,7 @@ class LivePaperTrader:
             if event.event_type == "shutdown":
                 break
             self._persist_event(event)
+            self._record_message_type(event)
             await self._handle_event(event)
 
     async def _duration_timer(self) -> None:
@@ -195,10 +226,30 @@ class LivePaperTrader:
                     "reason": event.payload.get("reason", "sequence_gap"),
                 }
             )
+            self.rows["sequence_events"].append(
+                {
+                    "ts": event.received_ts.isoformat(),
+                    "market_id": event.market_id,
+                    "sequence": event.sequence,
+                    "reason": event.payload.get("reason", "sequence_gap"),
+                    "expected": event.payload.get("expected"),
+                    "actual": event.payload.get("actual"),
+                }
+            )
             return
         if event.event_type == "snapshot_recovery" and event.market_id and event.snapshot:
             self.books.setdefault(event.market_id, LocalOrderBook()).apply_snapshot(event.snapshot)
             self.health.mark_recovered(event.market_id)
+            self.rows["sequence_events"].append(
+                {
+                    "ts": event.received_ts.isoformat(),
+                    "market_id": event.market_id,
+                    "sequence": event.sequence,
+                    "reason": "snapshot_recovery",
+                    "expected": None,
+                    "actual": event.sequence,
+                }
+            )
             self.rows["health"].append(
                 {
                     "ts": event.received_ts.isoformat(),
@@ -213,6 +264,7 @@ class LivePaperTrader:
             self.health.market(event.market_id).last_snapshot_ts = event.received_ts
             self.health.market(event.market_id).last_sequence = event.sequence
             self._record_book(event, event.snapshot)
+            await self._validate_book_event(event, event.snapshot)
             await self._strategy_step(event, event.snapshot)
             return
         if event.event_type == "orderbook_delta" and event.market_id and event.delta:
@@ -234,9 +286,21 @@ class LivePaperTrader:
                 self.health.mark_recovered(event.market_id)
                 return
             self._record_book(event, snapshot)
+            await self._validate_book_event(event, snapshot)
             await self._strategy_step(event, snapshot)
             return
         if event.event_type in {"public_trade", "market_status", "market_metadata", "health"}:
+            if event.event_type == "health" and event.market_id:
+                self.rows["sequence_events"].append(
+                    {
+                        "ts": event.received_ts.isoformat(),
+                        "market_id": event.market_id,
+                        "sequence": event.sequence,
+                        "reason": event.payload.get("reason"),
+                        "expected": event.payload.get("expected"),
+                        "actual": event.payload.get("actual"),
+                    }
+                )
             return
 
     async def _strategy_step(self, event: NormalizedEvent, snapshot: Any) -> None:
@@ -381,6 +445,67 @@ class LivePaperTrader:
             }
         )
 
+    async def _validate_book_event(self, event: NormalizedEvent, snapshot: Any) -> None:
+        if not self.session_config.dry_run:
+            return
+        validator = getattr(self.provider, "validate_book", None)
+        if callable(validator):
+            result = await validator(snapshot)
+        else:
+            result = {
+                "market_id": event.market_id,
+                "matched": True,
+                "local_best_bid": str(snapshot.best_bid),
+                "rest_best_bid": str(snapshot.best_bid),
+                "local_best_ask": str(snapshot.best_ask),
+                "rest_best_ask": str(snapshot.best_ask),
+            }
+        result["ts"] = event.received_ts.isoformat()
+        self.rows["orderbook_validation"].append(result)
+        if not result.get("matched", False) and event.market_id:
+            self.health.market(event.market_id).state = HealthState.DEGRADED
+
+    async def _health_monitor(self) -> None:
+        while not self._stop.is_set():
+            now = datetime.now(UTC)
+            for market_id, health in self.health.markets.items():
+                stale = health.stale_seconds(now)
+                if stale > 30 and health.state == HealthState.HEALTHY:
+                    health.state = HealthState.DEGRADED
+                    self.rows["health"].append(
+                        {
+                            "ts": now.isoformat(),
+                            "market_id": market_id,
+                            "state": "degraded",
+                            "reason": "stale_data",
+                            "stale_seconds": stale,
+                        }
+                    )
+                self.rows["market_health"].append(
+                    {
+                        "ts": now.isoformat(),
+                        "market_id": market_id,
+                        "state": health.state.value,
+                        "stale_seconds": stale,
+                        "sequence_gaps": health.sequence_gap_count,
+                        "reconnects": health.reconnect_count,
+                        "queue_utilization": health.queue_utilization,
+                    }
+                )
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=1)
+            except TimeoutError:
+                continue
+
+    def _record_message_type(self, event: NormalizedEvent) -> None:
+        self.message_type_counts[event.event_type] = (
+            self.message_type_counts.get(event.event_type, 0) + 1
+        )
+        self.rows["received_message_types"] = [
+            {"event_type": event_type, "count": count}
+            for event_type, count in sorted(self.message_type_counts.items())
+        ]
+
     def _record_book(self, event: NormalizedEvent, snapshot: Any) -> None:
         spread = (
             snapshot.best_ask - snapshot.best_bid
@@ -410,12 +535,13 @@ class LivePaperTrader:
             "final_cash": float(self.portfolio.cash),
             "realized_pnl": float(self.portfolio.realized_pnl),
             "fees": float(self.portfolio.fees),
-            "execution_endpoint_calls": 0,
+            "execution_endpoint_calls": self.execution_guard.calls,
             "health_halted_reason": self.health.halted_reason,
             "dry_run": self.session_config.dry_run,
         }
         for name, rows in self.rows.items():
             _write_csv(self.session_config.output / f"{name}.csv", rows)
+        self._write_validation_artifacts(summary)
         (self.session_config.output / "summary.json").write_text(
             json.dumps(summary, indent=2, sort_keys=True)
         )
@@ -450,6 +576,46 @@ class LivePaperTrader:
             ),
         )
         self._db.commit()
+
+    def _write_validation_artifacts(self, summary: dict[str, Any]) -> None:
+        output = self.session_config.output
+        subscriptions = getattr(getattr(self.provider, "websocket", None), "subscriptions", {})
+        subscription_rows = []
+        for state in subscriptions.values():
+            subscription_rows.append(
+                {
+                    "request_id": getattr(state, "request_id", None),
+                    "subscription_id": getattr(state, "subscription_id", None),
+                    "channels": list(getattr(state, "channels", ())),
+                    "market_tickers": list(getattr(state, "market_tickers", ())),
+                    "acknowledged": getattr(state, "acknowledged", False),
+                    "reconnect_generation": getattr(state, "reconnect_generation", None),
+                }
+            )
+        (output / "subscriptions.json").write_text(json.dumps(subscription_rows, indent=2))
+        passed = bool(
+            summary["dry_run"]
+            and self.rows["books"]
+            and (subscription_rows == [] or all(row["acknowledged"] for row in subscription_rows))
+        )
+        connection_summary = {
+            "session_id": summary["session_id"],
+            "validated_for_supervised_paper": passed,
+            "dry_run": summary["dry_run"],
+            "markets": self.session_config.markets,
+            "message_types": self.message_type_counts,
+            "health_halted_reason": summary["health_halted_reason"],
+            "execution_endpoint_calls": summary["execution_endpoint_calls"],
+        }
+        (output / "connection_summary.json").write_text(
+            json.dumps(connection_summary, indent=2, sort_keys=True)
+        )
+        dry_html = (
+            "<html><body><h1>Darwin Kalshi Dry Run</h1><pre>"
+            f"{json.dumps(connection_summary, indent=2)}"
+            "</pre></body></html>"
+        )
+        (output / "dry_run_report.html").write_text(dry_html)
 
     def _init_db(self) -> None:
         self._db.execute(

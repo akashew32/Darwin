@@ -138,10 +138,23 @@ class KalshiRestClient:
     async def get_events(self, limit: int = 100) -> dict[str, Any]:
         return await self.request("GET", "/trade-api/v2/events", params={"limit": limit})
 
-    async def get_markets(self, status: str | None = None, limit: int = 100) -> dict[str, Any]:
+    async def get_markets(
+        self,
+        status: str | None = None,
+        limit: int = 100,
+        cursor: str | None = None,
+        event_ticker: str | None = None,
+        category: str | None = None,
+    ) -> dict[str, Any]:
         params: dict[str, Any] = {"limit": limit}
         if status:
             params["status"] = status
+        if cursor:
+            params["cursor"] = cursor
+        if event_ticker:
+            params["event_ticker"] = event_ticker
+        if category:
+            params["category"] = category
         return await self._request_with_validation(
             "GET",
             "/trade-api/v2/markets",

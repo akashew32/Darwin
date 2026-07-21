@@ -52,21 +52,71 @@ def db_migrate() -> None:
 def markets_sync(
     output: Path = Path("data/normalized/markets.json"),
     environment: str = typer.Option("mock", "--environment"),
+    status: str = typer.Option("open", "--status"),
 ) -> None:
     """Sync markets from the configured exchange."""
-    if environment != "mock":
-        raise typer.BadParameter(
-            "non-mock market sync requires network credentials and is not enabled here"
-        )
     import asyncio
 
+    from darwin.exchanges.kalshi.market_data import KalshiMarketDataProvider
     from darwin.exchanges.mock import MockMarketDataProvider
+    from darwin.services.market_data import MarketDataProvider
 
-    markets = asyncio.run(MockMarketDataProvider().list_markets(status="open"))
+    config = load_config()
+    provider: MarketDataProvider
+    if environment == "mock":
+        provider = MockMarketDataProvider()
+    elif environment == "kalshi":
+        provider = KalshiMarketDataProvider.rest_only_from_config(config.exchange)
+    else:
+        raise typer.BadParameter("--environment must be mock or kalshi")
+    markets = asyncio.run(provider.list_markets(status=status))
     output.parent.mkdir(parents=True, exist_ok=True)
     payload = {"markets": [market.model_dump(mode="json") for market in markets]}
     output.write_text(json.dumps(payload, indent=2))
     typer.echo(f"wrote {len(markets)} markets to {output}")
+
+
+@markets_app.command("list-live")
+def markets_list_live(
+    status: str = typer.Option("open", "--status"),
+    search: str = typer.Option("", "--search"),
+    limit: int = typer.Option(20, "--limit"),
+) -> None:
+    """List current Kalshi markets to help choose valid paper-live tickers."""
+    import asyncio
+
+    from darwin.exchanges.kalshi.market_data import KalshiMarketDataProvider
+
+    async def _run() -> list[dict[str, object]]:
+        provider = KalshiMarketDataProvider.rest_only_from_config(load_config().exchange)
+        try:
+            raw_markets = await provider.list_market_payloads(status=status, max_markets=limit * 5)
+            query = search.lower()
+            rows = []
+            for raw in raw_markets:
+                title = str(raw.get("title") or raw.get("subtitle") or "")
+                ticker = str(raw.get("ticker") or "")
+                if query and query not in title.lower() and query not in ticker.lower():
+                    continue
+                rows.append(
+                    {
+                        "ticker": ticker,
+                        "title": title,
+                        "status": raw.get("status"),
+                        "close_time": raw.get("close_time"),
+                        "yes_bid": raw.get("yes_bid_dollars") or raw.get("yes_bid"),
+                        "yes_ask": raw.get("yes_ask_dollars") or raw.get("yes_ask"),
+                        "volume": raw.get("volume_fp") or raw.get("volume"),
+                        "open_interest": raw.get("open_interest_fp") or raw.get("open_interest"),
+                    }
+                )
+                if len(rows) >= limit:
+                    break
+            return rows
+        finally:
+            await provider.close()
+
+    typer.echo(json.dumps(asyncio.run(_run()), indent=2, sort_keys=True))
 
 
 @markets_app.command("rank")
@@ -288,6 +338,51 @@ def paper_live(
         ).run()
     )
     typer.echo(json.dumps(result["summary"], sort_keys=True))
+
+
+@app.command("validate-kalshi-feed")
+def validate_kalshi_feed(
+    markets: str = typer.Option(..., "--markets"),
+    duration: int = typer.Option(300, "--duration"),
+    output: Path = typer.Option(Path("reports/validation/kalshi-feed"), "--output"),
+    database_url: str = typer.Option("sqlite:///./darwin-validation.sqlite3", "--database-url"),
+    log_level: str = typer.Option("INFO", "--log-level"),
+) -> None:
+    """Validate Kalshi read-only market data for supervised paper trading."""
+    import asyncio
+
+    from darwin.exchanges.kalshi.market_data import KalshiMarketDataProvider
+    from darwin.execution.config import ExecutionSimulationConfig
+    from darwin.services.live_paper_trader import LivePaperSessionConfig, LivePaperTrader
+
+    configure_logging(log_level)
+    app_config = load_config()
+    try:
+        provider = KalshiMarketDataProvider.from_config(app_config.exchange)
+    except ValueError as exc:
+        typer.echo(str(exc))
+        raise typer.Exit(1) from exc
+    asyncio.run(
+        LivePaperTrader(
+            provider=provider,
+            strategy_config=load_strategy_config(Path("config/strategies/momentum.yaml")),
+            risk_config=app_config.risk,
+            execution_config=ExecutionSimulationConfig(),
+            session_config=LivePaperSessionConfig(
+                markets=[m for m in markets.split(",") if m],
+                duration_seconds=duration,
+                output=output,
+                database_url=database_url,
+                seed=42,
+                dry_run=True,
+            ),
+        ).run()
+    )
+    summary_path = output / "connection_summary.json"
+    connection_summary = json.loads(summary_path.read_text()) if summary_path.exists() else {}
+    typer.echo(json.dumps(connection_summary, indent=2, sort_keys=True))
+    if not connection_summary.get("validated_for_supervised_paper", False):
+        raise typer.Exit(1)
 
 
 @app.command()
